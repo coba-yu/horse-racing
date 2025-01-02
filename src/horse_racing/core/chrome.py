@@ -2,17 +2,19 @@ from time import sleep
 
 from selenium.webdriver import Chrome, ChromeOptions
 
+from horse_racing.core.user_agent import random_choice_user_agent
+
 
 class ChromeDriver:
     def __init__(self) -> None:
-        self.options = ChromeOptions()
-        self.options.add_argument("--headless")
-        self.options.add_argument("--no-sandbox")
-        self.options.add_argument("--disable-gpu")
-        self.options.add_argument("--user-agent=Mozilla/5.0")
+        self._options = ChromeOptions()
+        self._options.add_argument("--headless")
+        self._options.add_argument("--no-sandbox")
+        self._options.add_argument("--disable-gpu")
 
     def get_page_source(self, url: str) -> str:
-        with Chrome(options=self.options) as driver:
+        self._options.add_argument(f"--user-agent={random_choice_user_agent()}")
+        with Chrome(options=self._options) as driver:
             driver.get(url=url)
             sleep(1.0)
             return str(driver.page_source)
