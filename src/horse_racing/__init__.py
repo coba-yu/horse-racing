@@ -36,7 +36,7 @@ def main() -> None:
             if all_df is None:
                 all_df = df
             else:
-                all_df = pl.concat([df, all_df])
+                all_df = pl.concat([all_df, df])
     if all_df is None:
         raise ValueError(f"No data ({year=}, {month=}).")
     logger.info(all_df)
