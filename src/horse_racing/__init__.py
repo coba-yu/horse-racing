@@ -4,6 +4,7 @@ from argparse import ArgumentParser
 from tqdm import tqdm
 
 from horse_racing.core.chrome import ChromeDriver
+from horse_racing.core.logging import logger
 from horse_racing.usecase.race_schedule import RaceScheduleUsecase
 
 
@@ -20,12 +21,12 @@ def main() -> None:
     race_schedule_usecase = RaceScheduleUsecase(driver=driver)
 
     race_dates = race_schedule_usecase.get_race_dates(year=year, month=month)
-    print(race_dates)
+    logger.info(race_dates)
 
     race_date_to_ids_dict = {}
     for race_date in race_dates:
         race_ids_per_date = race_schedule_usecase.get_race_ids(race_date=race_date)
-        print(f"{race_date=}, {race_ids_per_date=}")
+        logger.info(f"{race_date=}, {race_ids_per_date=}")
         race_date_to_ids_dict[race_date] = race_ids_per_date
 
     all_df: pl.DataFrame | None = None
@@ -38,7 +39,7 @@ def main() -> None:
                 all_df = pl.concat([df, all_df])
     if all_df is None:
         raise ValueError(f"No data ({year=}, {month=}).")
-    print(all_df)
+    logger.info(all_df)
 
     monthly_results_dir = os.path.join("data", "cache", "parquet", "race_results")
     os.makedirs(monthly_results_dir, exist_ok=True)
