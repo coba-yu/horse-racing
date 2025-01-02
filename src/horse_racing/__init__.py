@@ -1,4 +1,6 @@
+import os
 import polars as pl
+from argparse import ArgumentParser
 from tqdm import tqdm
 
 from horse_racing.core.chrome import ChromeDriver
@@ -6,11 +8,17 @@ from horse_racing.usecase.race_schedule import RaceScheduleUsecase
 
 
 def main() -> None:
+    parser = ArgumentParser()
+    parser.add_argument("--year", type=int, default=2024)
+    parser.add_argument("--month", type=int, default=1)
+
+    args = parser.parse_args()
+    year = args.year
+    month = args.month
+
     driver = ChromeDriver()
     race_schedule_usecase = RaceScheduleUsecase(driver=driver)
 
-    year = 2024
-    month = 1
     race_dates = race_schedule_usecase.get_race_dates(year=year, month=month)
     print(race_dates)
 
@@ -28,4 +36,10 @@ def main() -> None:
                 all_df = df
             else:
                 all_df = pl.concat([df, all_df])
+    if all_df is None:
+        raise ValueError(f"No data ({year=}, {month=}).")
     print(all_df)
+
+    monthly_results_dir = os.path.join("data", "cache", "parquet", "race_results")
+    os.makedirs(monthly_results_dir, exist_ok=True)
+    all_df.write_parquet(os.path.join(monthly_results_dir, f"{year:04}{month:02}.parquet"))

@@ -40,7 +40,7 @@ class RaceScheduleUsecase:
         self.driver = driver
 
     def _make_tmp_dir(self, sub_dir: str) -> str:
-        tmp_dir = os.path.join("data", "tmp", "html", sub_dir)
+        tmp_dir = os.path.join("data", "cache", "html", sub_dir)
         os.makedirs(tmp_dir, exist_ok=True)
         return tmp_dir
 
@@ -92,7 +92,7 @@ class RaceScheduleUsecase:
         return race_ids
 
     def get_race_result(self, race_id: str, race_date: str) -> pl.DataFrame:
-        tmp_dir = self._make_tmp_dir(sub_dir=os.path.join("race_results", f"race_date={race_date}"))
+        tmp_dir = self._make_tmp_dir(sub_dir=os.path.join("race_daily_results", f"race_date={race_date}"))
         tmp_html_path = os.path.join(tmp_dir, f"{race_id}.html")
 
         if os.path.isfile(tmp_html_path):
