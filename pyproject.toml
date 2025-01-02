@@ -1,0 +1,17 @@
+[project]
+name = "horse-racing"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "coba-yu", email = "yukob.formal@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = []
+
+[project.scripts]
+horse-racing = "horse_racing:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
