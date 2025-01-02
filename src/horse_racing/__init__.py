@@ -20,6 +20,7 @@ def main() -> None:
     driver = ChromeDriver()
     race_schedule_usecase = RaceScheduleUsecase(driver=driver)
 
+    # race_dates = ["20240106"]  # for debug
     race_dates = race_schedule_usecase.get_race_dates(year=year, month=month)
     logger.info(race_dates)
 
@@ -37,6 +38,7 @@ def main() -> None:
                 all_df = df
             else:
                 all_df = pl.concat([all_df, df])
+
     if all_df is None:
         raise ValueError(f"No data ({year=}, {month=}).")
     logger.info(all_df)

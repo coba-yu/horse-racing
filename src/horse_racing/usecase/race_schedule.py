@@ -5,6 +5,8 @@ from time import sleep
 
 import pandas as pd
 import polars as pl
+from bs4.element import Tag
+
 from horse_racing.core.chrome import ChromeDriver
 from horse_racing.core.html import get_html, get_soup
 
@@ -18,21 +20,24 @@ def extract_race_date(href: str) -> str | None:
 
 
 class RaceScheduleUsecase:
+    horse_name_column = "馬名"
+    jockey_name_column = "騎手"
+    trainer_name_column = "厩舎"
     race_result_columns = [
         "着 順",
         "枠",
         "馬 番",
-        "馬名",
+        horse_name_column,
         "性齢",
         "斤量",
-        "騎手",
+        jockey_name_column,
         "タイム",
         "着差",
         "人 気",
         "単勝 オッズ",
         "後3F",
         "コーナー 通過順",
-        "厩舎",
+        trainer_name_column,
         "馬体重 (増減)",
     ]
 
@@ -43,6 +48,35 @@ class RaceScheduleUsecase:
         tmp_dir = os.path.join("data", "cache", "html", sub_dir)
         os.makedirs(tmp_dir, exist_ok=True)
         return tmp_dir
+
+    def _remove_whitespace(self, df: pl.DataFrame, column: str) -> pl.DataFrame:
+        df = df.with_columns(pl.col(column).str.replace(r"^\s+", "").alias(column))
+        return df.with_columns(pl.col(column).str.replace(r"\s+$", "").alias(column))
+
+    def _extracted_id_df(self, tag: Tag, href_key: str, id_column_prefix: str, name_column: str) -> pl.DataFrame:
+        a_list = tag.find_all("a", href=re.compile(rf"{href_key}/[\d\w]+"))
+        name_values: list[str | None] = []
+        id_values: list[str | None] = []
+        for a in a_list:
+            name_values.append(a.text)
+
+            href = a.get("href")
+            if href is None:
+                id_values.append(None)
+                continue
+
+            ids = re.findall(rf"{href_key}/([\d\w]+)", href)
+            if ids is None or len(ids) < 1:
+                id_values.append(None)
+                continue
+            id_values.append(ids[0])
+
+        return pl.DataFrame(
+            {
+                name_column: name_values,
+                f"{id_column_prefix}_id": id_values,
+            },
+        )
 
     @staticmethod
     def get_race_dates(year: int, month: int) -> list[str]:
@@ -109,4 +143,44 @@ class RaceScheduleUsecase:
         if len(pdf_list) < 1:
             return pl.DataFrame()
         df = pl.from_pandas(pdf_list[0])
-        return df.with_columns(race_id=pl.lit(race_id), race_date=pl.lit(race_date))
+        df = df.with_columns(race_id=pl.lit(race_id), race_date=pl.lit(race_date))
+
+        soup = get_soup(html)
+        table = soup.find("table", class_="RaceTable01")
+        horse_id_df = self._extracted_id_df(
+            table,
+            href_key="horse",
+            id_column_prefix="horse",
+            name_column=self.horse_name_column,
+        )
+        df = self._remove_whitespace(df, column=self.horse_name_column)
+        horse_id_df = self._remove_whitespace(horse_id_df, column=self.horse_name_column)
+        df = df.join(horse_id_df, on=self.horse_name_column, how="left")
+
+        jockey_id_df = self._extracted_id_df(
+            table,
+            href_key="jockey/result/recent",
+            id_column_prefix="jockey",
+            name_column=self.jockey_name_column,
+        )
+        df = self._remove_whitespace(df, column=self.jockey_name_column)
+        jockey_id_df = self._remove_whitespace(jockey_id_df, column=self.jockey_name_column)
+        df = df.join(jockey_id_df, on=self.jockey_name_column, how="left")
+
+        trainer_id_df = self._extracted_id_df(
+            table,
+            href_key="trainer/result/recent",
+            id_column_prefix="trainer",
+            name_column=self.trainer_name_column,
+        )
+        df = self._remove_whitespace(df, column=self.trainer_name_column)
+        trainer_id_df = self._remove_whitespace(trainer_id_df, column=self.trainer_name_column)
+        a_list = table.find_all("a", href=re.compile(r"trainer/result/recent/[\d\w]+"))
+        trainer_id_df = trainer_id_df.with_columns(
+            trainer_label=pl.Series([a.parent.find("span").text for a in a_list])
+        )
+        trainer_id_df = self._remove_whitespace(trainer_id_df, column="trainer_label")
+        trainer_id_df = trainer_id_df.with_columns(
+            pl.concat_str(pl.col("trainer_label"), pl.col(self.trainer_name_column)).alias(self.trainer_name_column)
+        )
+        return df.join(trainer_id_df, on=self.trainer_name_column, how="left")
