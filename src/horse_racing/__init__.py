@@ -13,15 +13,20 @@ def main() -> None:
     parser.add_argument("--year", type=int, default=2024)
     parser.add_argument("--month", type=int, default=1)
 
+    parser.add_argument("--race-dates", type=str)
+
     args = parser.parse_args()
     year = args.year
     month = args.month
+    _race_dates = args.race_dates
 
     driver = ChromeDriver()
     race_schedule_usecase = RaceScheduleUsecase(driver=driver)
 
-    # race_dates = ["20240106"]  # for debug
-    race_dates = race_schedule_usecase.get_race_dates(year=year, month=month)
+    if args.race_dates is None:
+        race_dates = race_schedule_usecase.get_race_dates(year=year, month=month)
+    else:
+        race_dates = _race_dates.split(",")
     logger.info(race_dates)
 
     race_date_to_ids_dict = {}
