@@ -7,7 +7,10 @@ authors = [
     { name = "coba-yu", email = "yukob.formal@gmail.com" }
 ]
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "beautifulsoup4>=4.12.3,<5.0.0",
+    "requests>=2.32.3,<3.0.0",
+]
 
 [project.scripts]
 horse-racing = "horse_racing:main"
@@ -22,6 +25,7 @@ dev = [
     "pre-commit>=4.0.1",
     "pytest>=8.3.4",
     "ruff>=0.8.4",
+    "types-requests>=2.32.0.20241016",
 ]
 
 [tool.mypy]
