@@ -7,6 +7,7 @@ from tqdm import tqdm
 from horse_racing.core.chrome import ChromeDriver
 from horse_racing.core.logging import logger
 from horse_racing.usecase.race_schedule import RaceScheduleUsecase
+from horse_racing.usecase.horse import HorseUsecase
 
 
 def get_and_save_race_results(
@@ -66,5 +67,11 @@ def main() -> None:
 
     race_df = get_and_save_race_results(driver=driver, year=year, month=month, race_dates=race_dates)
 
-    horse_ids = race_df["horse_id"].unique()
+    horse_ids = race_df["horse_id"].unique().sort()
     logger.info(horse_ids)
+
+    horse_usecase = HorseUsecase()
+    # horse_id = horse_ids[0]
+    horse_id = "2012100683"
+    horse_df = horse_usecase.get_horse_results(horse_id=horse_id)
+    print(horse_df)

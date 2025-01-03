@@ -12,7 +12,7 @@ from horse_racing.core.logging import logger
 
 P = ParamSpec("P")
 
-DEFAULT_SLEEP_SECONDS = 30.0
+DEFAULT_SLEEP_SECONDS = 10.0
 USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36",
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36",
