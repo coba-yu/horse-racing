@@ -1,14 +1,13 @@
 import os.path
 import re
 from io import StringIO
-from time import sleep
 
 import pandas as pd
 import polars as pl
 from bs4.element import Tag
 
 from horse_racing.core.chrome import ChromeDriver
-from horse_racing.core.html import get_html, get_soup
+from horse_racing.core.html import get_html, get_soup, make_cache_dir
 
 
 def extract_race_date(href: str) -> str | None:
@@ -43,11 +42,6 @@ class RaceScheduleUsecase:
 
     def __init__(self, driver: ChromeDriver) -> None:
         self.driver = driver
-
-    def _make_tmp_dir(self, sub_dir: str) -> str:
-        tmp_dir = os.path.join("data", "cache", "html", sub_dir)
-        os.makedirs(tmp_dir, exist_ok=True)
-        return tmp_dir
 
     def _remove_whitespace(self, df: pl.DataFrame, column: str) -> pl.DataFrame:
         df = df.with_columns(pl.col(column).str.replace(r"^\s+", "").alias(column))
@@ -97,15 +91,15 @@ class RaceScheduleUsecase:
         return race_dates
 
     def get_race_ids(self, race_date: str) -> list[str]:
-        tmp_dir = self._make_tmp_dir(sub_dir="race_list")
-        tmp_html_path = os.path.join(tmp_dir, f"{race_date}.html")
-        if os.path.isfile(tmp_html_path):
-            with open(tmp_html_path, "r") as f:
+        cache_dir = make_cache_dir(sub_dir="race_list")
+        cache_path = os.path.join(cache_dir, f"{race_date}.html")
+        if os.path.isfile(cache_path):
+            with open(cache_path, "r") as f:
                 html = f.read()
         else:
             url = f"https://race.netkeiba.com/top/race_list.html?kaisai_date={race_date}"
             html = self.driver.get_page_source(url=url)
-            with open(tmp_html_path, "w") as f:
+            with open(cache_path, "w") as f:
                 f.write(html)
 
         soup = get_soup(html)
@@ -126,18 +120,11 @@ class RaceScheduleUsecase:
         return race_ids
 
     def get_race_result(self, race_id: str, race_date: str) -> pl.DataFrame:
-        tmp_dir = self._make_tmp_dir(sub_dir=os.path.join("race_daily_results", f"race_date={race_date}"))
-        tmp_html_path = os.path.join(tmp_dir, f"{race_id}.html")
-
-        if os.path.isfile(tmp_html_path):
-            with open(tmp_html_path, "r") as f:
-                html = f.read()
-        else:
-            url = f"https://race.netkeiba.com/race/result.html?race_id={race_id}"
-            html = get_html(url)
-            sleep(1.0)
-            with open(tmp_html_path, "w") as f:
-                f.write(html)
+        url = f"https://race.netkeiba.com/race/result.html?race_id={race_id}"
+        html = get_html(
+            url=url,
+            cache_sub_path=os.path.join("race_daily_results", f"race_date={race_date}", f"{race_id}.html"),
+        )
 
         pdf_list = pd.read_html(StringIO(html), converters={c: str for c in self.race_result_columns})
         if len(pdf_list) < 1:
