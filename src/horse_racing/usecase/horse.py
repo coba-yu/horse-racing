@@ -34,21 +34,21 @@ class HorseUsecase:
         "賞金",
     ]
 
-    def _get_horse_html(self, horse_id: str) -> BeautifulSoup:
+    def _get_horse_html(self, horse_id: str, race_date: str) -> BeautifulSoup:
         url = f"https://db.netkeiba.com/horse/{horse_id}"
-        html = get_html(url=url, cache_sub_path=Path("horses", f"{horse_id}.html"))
+        html = get_html(url=url, cache_sub_path=Path("horses", f"race_date={race_date}", f"{horse_id}.html"))
         return get_soup(html)
 
-    def get_horse_profile(self, horse_id: str) -> pl.DataFrame:
-        soup = self._get_horse_html(horse_id=horse_id)
+    def get_horse_profile(self, horse_id: str, race_date: str) -> pl.DataFrame:
+        soup = self._get_horse_html(horse_id=horse_id, race_date=race_date)
         table = soup.find("table", class_="db_prof_table")
         pdf_list = pd.read_html(table.decode())
         if len(pdf_list) < 1:
             return pl.DataFrame()
         return pl.from_pandas(pdf_list[0])
 
-    def get_horse_results(self, horse_id: str) -> pl.DataFrame:
-        soup = self._get_horse_html(horse_id=horse_id)
+    def get_horse_results(self, horse_id: str, race_date: str) -> pl.DataFrame:
+        soup = self._get_horse_html(horse_id=horse_id, race_date=race_date)
         table = soup.find("table", class_="db_h_race_results")
         pdf_list = pd.read_html(table.decode(), converters={c: str for c in self.result_columns})
         if len(pdf_list) < 1:

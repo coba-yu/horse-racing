@@ -66,12 +66,15 @@ def main() -> None:
     driver = ChromeDriver()
 
     race_df = get_and_save_race_results(driver=driver, year=year, month=month, race_dates=race_dates)
-
-    horse_ids = race_df["horse_id"].unique().sort()
-    logger.info(horse_ids)
+    horse_id_per_date_df = race_df.group_by("race_date").agg(pl.col("horse_id").alias("horse_ids"))
+    date_to_horse_ids_dict = dict(
+        zip(horse_id_per_date_df["race_date"].to_list(), horse_id_per_date_df["horse_ids"].to_list())
+    )
+    print(date_to_horse_ids_dict)
 
     horse_usecase = HorseUsecase()
-    # horse_id = horse_ids[0]
-    horse_id = "2012100683"
-    horse_df = horse_usecase.get_horse_results(horse_id=horse_id)
-    print(horse_df)
+
+    for race_date, horse_ids in date_to_horse_ids_dict.items():
+        for horse_id in tqdm(horse_ids, desc=f"{race_date=}"):
+            horse_df = horse_usecase.get_horse_results(horse_id=horse_id, race_date=race_date)
+            print(horse_df)
