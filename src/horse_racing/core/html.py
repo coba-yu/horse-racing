@@ -66,7 +66,7 @@ def get_html_with_cache(
         html = func(url, *args, **kwds)
         sleep(sleep_seconds)
 
-        if cache_sub_dir is not None:
+        if cache_sub_path is not None:
             logger.info(f"Save cache: {cache_path}")
             with open(cache_path, "w") as f:
                 f.write(html)
