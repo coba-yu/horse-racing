@@ -91,7 +91,7 @@ class RaceScheduleUsecase:
         return race_dates
 
     def get_race_ids(self, race_date: str) -> list[str]:
-        cache_dir = make_cache_dir(sub_dir="race_list")
+        cache_dir = make_cache_dir(sub_dir="race_schedule")
         cache_path = os.path.join(cache_dir, f"{race_date}.html")
         if os.path.isfile(cache_path):
             with open(cache_path, "r") as f:
@@ -123,7 +123,7 @@ class RaceScheduleUsecase:
         url = f"https://race.netkeiba.com/race/result.html?race_id={race_id}"
         html = get_html(
             url=url,
-            cache_sub_path=os.path.join("race_daily_results", f"race_date={race_date}", f"{race_id}.html"),
+            cache_sub_path=os.path.join("race_results", f"race_date={race_date}", f"{race_id}.html"),
         )
 
         pdf_list = pd.read_html(StringIO(html), converters={c: str for c in self.race_result_columns})
