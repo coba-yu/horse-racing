@@ -7,6 +7,7 @@ variable "gcp_iam_roles" {
     "roles/aiplatform.user",
     "roles/cloudscheduler.admin",
     "roles/cloudfunctions.developer",
+    "roles/iam.serviceAccountViewer", # IAMから手動で追加する必要がある.
     "roles/pubsub.editor",
     "roles/resourcemanager.projectIamAdmin",
     "roles/storage.admin",
