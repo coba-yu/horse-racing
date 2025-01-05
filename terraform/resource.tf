@@ -7,9 +7,9 @@ data "google_service_account" "yukob_horse_racing" {
 }
 
 resource "google_project_iam_member" "pubsub_editor" {
-  project    = var.google_project
-  role       = "roles/pubsub.editor"
-  member     = "serviceAccount:${data.google_service_account.yukob_horse_racing.email}"
+  project = var.google_project
+  role    = "roles/pubsub.editor"
+  member  = "serviceAccount:${data.google_service_account.yukob_horse_racing.email}"
 }
 
 #==================#
@@ -17,7 +17,7 @@ resource "google_project_iam_member" "pubsub_editor" {
 #==================#
 
 resource "google_pubsub_topic" "horse_racing_data" {
-  name = "horse-racing-data"
+  name       = "horse-racing-data"
   depends_on = [google_project_iam_member.pubsub_editor]
 }
 
