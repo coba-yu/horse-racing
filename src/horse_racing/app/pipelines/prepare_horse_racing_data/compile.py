@@ -17,17 +17,17 @@ def add(a: int, b: int) -> int:
     name=PIPELINE_NAME,
     pipeline_root=f"gs://horse-racing-pipelines/{PIPELINE_NAME}/history",
 )
-def pipeline() -> int:
-    task1 = add(a=1, b=5)
-    return int(task1.output)
+def pipeline() -> None:
+    task1 = add(a=1, b=5)  # noqa: F841
 
 
-# Compile the pipeline
+if __name__ == "__main__":
+    # Compile the pipeline
 
-pipeline_dir = Path(__file__).parent
-package_path = pipeline_dir / "pipeline.yaml"
+    pipeline_dir = Path(__file__).parent
+    package_path = pipeline_dir / "pipeline.yaml"
 
-compiler.Compiler().compile(
-    pipeline_func=pipeline,
-    package_path=str(package_path),
-)
+    compiler.Compiler().compile(
+        pipeline_func=pipeline,
+        package_path=str(package_path),
+    )
