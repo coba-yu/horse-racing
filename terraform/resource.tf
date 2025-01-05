@@ -17,20 +17,15 @@ resource "google_project_iam_member" "gcp_iam_member" {
 # Vertex AI Pipelines (common) #
 #==============================#
 
-data "local_file" "pipeline_yaml" {
-  for_each = fileset("${path.module}/../src/horse_racing/pipelines", "**/pipeline.yaml")
-  filename = each.value
-}
-
 data "google_storage_bucket" "horse_racing_pipelines" {
   name = "horse-racing-pipelines"
 }
 
 resource "google_storage_bucket_object" "pipeline_yaml" {
-  for_each = data.local_file.pipeline_yaml
+  for_each = fileset("${path.module}/../src/horse_racing/app/pipelines", "**/pipeline.yaml")
   bucket   = data.google_storage_bucket.horse_racing_pipelines.name
   name     = each.value
-  source   = "${path.module}/../src/horse_racing/pipelines/${each.value}"
+  source   = "${path.module}/../src/horse_racing/app/pipelines/${each.value}"
 }
 
 #==================#
