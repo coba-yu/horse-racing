@@ -6,6 +6,7 @@ resource "google_project_service" "pubsub" {
 
 resource "google_pubsub_topic" "horse_racing_data" {
   name = "horse-racing-data"
+  depends_on = [ google_project_service.pubsub ]
 }
 
 resource "google_cloud_scheduler_job" "horse_racing_data" {
@@ -16,5 +17,5 @@ resource "google_cloud_scheduler_job" "horse_racing_data" {
     topic_name = google_pubsub_topic.horse_racing_data.id
     data       = base64encode("horse racing data")
   }
-  depends_on = [google_pubsub_topic.horse_racing_data]
+  depends_on = [ google_pubsub_topic.horse_racing_data ]
 }
