@@ -9,7 +9,7 @@ variable "gcp_iam_roles" {
     "roles/cloudfunctions.developer",
     "roles/pubsub.editor",
     "roles/resourcemanager.projectIamAdmin",
-    "roles/storage.objectUser",
+    "roles/storage.admin",
   ]
 }
 
