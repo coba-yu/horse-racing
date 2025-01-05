@@ -43,7 +43,54 @@ resource "google_cloud_scheduler_job" "horse_racing_data" {
 
   pubsub_target {
     topic_name = google_pubsub_topic.horse_racing_data.id
-    data       = base64encode("horse racing data")
+    data = base64encode(
+      jsonencode(
+        {
+          pipeline_display_name = "horse-racing-data"
+          pipeline_spec_uri     = "gs://${data.google_storage_bucket.horse_racing_pipelines.name}/prepare_horse_racing_data/pipeline.yaml"
+          pipeline_root         = "gs://${data.google_storage_bucket.horse_racing_pipelines.name}/prepare_horse_racing_data/history"
+        }
+      )
+    )
   }
   depends_on = [google_pubsub_topic.horse_racing_data]
+}
+
+data "archive_file" "gcf_src_scheduled_pipeline" {
+  type        = "zip"
+  source_dir  = "${path.module}/../src/horse_racing/app/functions/scheduled_pipeline"
+  output_path = "${path.module}/../src/horse_racing/app/functions/scheduled_pipeline.zip"
+}
+
+resource "google_storage_bucket_object" "scheduled_pipeline_function_src" {
+  name   = "functions/scheduled_pipeline/${data.archive_file.gcf_src_scheduled_pipeline.output_md5}.zip"
+  bucket = data.google_storage_bucket.horse_racing_pipelines.name
+  source = data.archive_file.gcf_src_scheduled_pipeline.output_path
+}
+
+resource "google_cloudfunctions2_function" "scheduled_pipeline_function" {
+  name     = "scheduled-pipeline-horse-racing-data"
+  location = var.region
+
+  build_config {
+    runtime     = "python312"
+    entry_point = "subscribe"
+    source {
+      storage_source {
+        bucket = data.google_storage_bucket.horse_racing_pipelines.name
+        object = google_storage_bucket_object.scheduled_pipeline_function_src.name
+      }
+    }
+  }
+
+  event_trigger {
+    event_type   = "google.cloud.pubsub.topic.v1.messagePublished"
+    pubsub_topic = google_pubsub_topic.horse_racing_data.id
+    retry_policy = "RETRY_POLICY_DO_NOT_RETRY"
+  }
+
+  depends_on = [
+    google_storage_bucket_object.scheduled_pipeline_function_src,
+    google_pubsub_topic.horse_racing_data,
+  ]
 }

@@ -8,3 +8,7 @@ variable "gcp_iam_roles" {
     "roles/pubsub.editor",
   ]
 }
+
+variable "region" {
+  default = "asia-northeast1"
+}
