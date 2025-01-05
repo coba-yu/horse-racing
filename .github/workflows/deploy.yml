@@ -1,6 +1,3 @@
-# This workflow will install Python dependencies, run tests and lint with a variety of Python versions
-# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-python
-
 name: Deploy
 
 on:
@@ -54,15 +51,34 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        run: |
+          uv sync
+
+      - name: vertex ai pipeline
+        run: |
+          # compile pipelines
+          for filepath in src/horse_racing/app/pipelines/*/compile.py; do
+            echo "found: ${filepath}"
+            uv run python "${filepath}"
+          done
+
       - uses: hashicorp/setup-terraform@v3
         with:
           terraform_wrapper: false
+
       - name: terraform
         working-directory: terraform
         env:
           GOOGLE_PROJECT: "yukob-horse-racing"
           GOOGLE_CREDENTIALS: ${{ secrets.GCP_CREDENTIALS }}
         run: |
+          ls ../src/horse_racing/app/pipelines/*/*.yaml
+
           terraform fmt -check -diff
           terraform init -reconfigure -backend-config="gs.tfbackend"
           terraform validate
