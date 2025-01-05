@@ -5,6 +5,7 @@ variable "google_project" {
 variable "gcp_iam_roles" {
   default = [
     "roles/cloudscheduler.admin",
+    "roles/cloudfunctions.developer",
     "roles/pubsub.editor",
   ]
 }
