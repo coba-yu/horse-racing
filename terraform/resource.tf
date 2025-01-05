@@ -1,5 +1,5 @@
 resource "google_pubsub_topic" "horse_racing_data" {
-  name       = "horse-racing-data"
+  name = "horse-racing-data"
 }
 
 resource "google_cloud_scheduler_job" "horse_racing_data" {
