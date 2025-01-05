@@ -91,6 +91,8 @@ resource "google_cloudfunctions2_function" "scheduled_pipeline_function" {
 
   service_config {
     timeout_seconds       = 540
+    available_memory      = "1Gi"
+    available_cpu         = "1"
     service_account_email = var.service_account_email
   }
 
