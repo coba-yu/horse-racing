@@ -8,7 +8,7 @@ on:
     branches: [ "main" ]
 
 jobs:
-  build:
+  test:
 
     runs-on: ubuntu-latest
 
@@ -25,3 +25,20 @@ jobs:
     - name: Lint and Test
       run: |
         python -m tox
+
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+      - name: terraform
+        working-directory: "terraform"
+        env:
+          GOOGLE_PROJECT: "yukob-horse-racing"
+          GOOGLE_CREDENTIALS: ${{ secrets.GCP_CREDENTIALS }}
+        run: |
+          terraform init
+          terraform apply -auto-approve
