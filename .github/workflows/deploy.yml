@@ -8,25 +8,44 @@ on:
     branches: [ "main" ]
 
 jobs:
-  test:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      src: ${{ steps.filter.outputs.src }}
 
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            src:
+              - 'src/**'
+              - .pre-commit-config.yaml
+              - pyproject.toml
+              - tox.ini
+
+  test:
+    needs: [ changes ]
+    if: ${{ needs.changes.outputs.src == 'true' }}
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v4
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: 3.12
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        python -m pip install tox tox-uv
-    - name: Lint and Test
-      run: |
-        python -m tox
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.12
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install tox tox-uv
+      - name: Lint and Test
+        run: |
+          python -m tox
 
   deploy:
+    needs: [ test ]
     runs-on: ubuntu-latest
 
     steps:
@@ -35,7 +54,7 @@ jobs:
         with:
           terraform_wrapper: false
       - name: terraform
-        working-directory: "terraform"
+        working-directory: terraform
         env:
           GOOGLE_PROJECT: "yukob-horse-racing"
           GOOGLE_CREDENTIALS: ${{ secrets.GCP_CREDENTIALS }}
