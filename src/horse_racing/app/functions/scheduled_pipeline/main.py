@@ -1,10 +1,13 @@
 import base64
 import json
+import os
 from typing import Any
 
 import functions_framework
 from cloudevents.http import CloudEvent
 from google.cloud import aiplatform
+
+REGION = os.environ["REGION"]
 
 
 @functions_framework.cloud_event  # type: ignore
@@ -24,7 +27,7 @@ def trigger_pipeline_run(payload_json: dict[str, Any]) -> None:
     parameter_values = payload_json.get("parameter_values", {})
 
     # Create a PipelineJob using the compiled pipeline from pipeline_spec_uri
-    aiplatform.init()
+    aiplatform.init(location=REGION)
     job = aiplatform.PipelineJob(
         display_name=pipeline_display_name,
         template_path=pipeline_spec_uri,
