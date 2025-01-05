@@ -23,14 +23,14 @@ data "local_file" "pipeline_yaml" {
 }
 
 data "google_storage_bucket" "horse_racing_pipelines" {
-  name     = "horse-racing-pipelines"
+  name = "horse-racing-pipelines"
 }
 
 resource "google_storage_bucket_object" "pipeline_yaml" {
   for_each = data.local_file.pipeline_yaml
-  bucket = data.google_storage_bucket.horse_racing_pipelines.name
-  name   = each.value
-  source = "${path.module}/../src/horse_racing/pipelines/${each.value}"
+  bucket   = data.google_storage_bucket.horse_racing_pipelines.name
+  name     = each.value
+  source   = "${path.module}/../src/horse_racing/pipelines/${each.value}"
 }
 
 #==================#
