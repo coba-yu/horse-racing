@@ -16,3 +16,7 @@ variable "gcp_iam_roles" {
 variable "region" {
   default = "asia-northeast1"
 }
+
+variable "service_account_email" {
+  default = "yukob-horse-racing@yukob-horse-racing.iam.gserviceaccount.com"
+}

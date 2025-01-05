@@ -83,6 +83,11 @@ resource "google_cloudfunctions2_function" "scheduled_pipeline_function" {
     }
   }
 
+  service_config {
+    timeout_seconds       = 540
+    service_account_email = var.service_account_email
+  }
+
   event_trigger {
     event_type   = "google.cloud.pubsub.topic.v1.messagePublished"
     pubsub_topic = google_pubsub_topic.horse_racing_data.id
