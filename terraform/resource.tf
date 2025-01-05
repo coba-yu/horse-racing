@@ -1,3 +1,9 @@
+# Enable Pub/Sub API
+resource "google_project_service" "pubsub" {
+  service            = "pubsub.googleapis.com"
+  disable_on_destroy = false
+}
+
 resource "google_pubsub_topic" "horse_racing_data" {
   name = "horse-racing-data"
 }
