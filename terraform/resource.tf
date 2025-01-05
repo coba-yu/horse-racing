@@ -18,14 +18,16 @@ resource "google_project_iam_member" "gcp_iam_member" {
 #==============================#
 
 data "google_storage_bucket" "horse_racing_pipelines" {
-  name = "horse-racing-pipelines"
+  name       = "horse-racing-pipelines"
+  depends_on = [google_project_iam_member.gcp_iam_member]
 }
 
 resource "google_storage_bucket_object" "pipeline_yaml" {
-  for_each = fileset("${path.module}/../src/horse_racing/app/pipelines", "**/pipeline.yaml")
-  bucket   = data.google_storage_bucket.horse_racing_pipelines.name
-  name     = each.value
-  source   = "${path.module}/../src/horse_racing/app/pipelines/${each.value}"
+  for_each   = fileset("${path.module}/../src/horse_racing/app/pipelines", "**/pipeline.yaml")
+  bucket     = data.google_storage_bucket.horse_racing_pipelines.name
+  name       = each.value
+  source     = "${path.module}/../src/horse_racing/app/pipelines/${each.value}"
+  depends_on = [google_project_iam_member.gcp_iam_member]
 }
 
 #==================#
@@ -53,7 +55,10 @@ resource "google_cloud_scheduler_job" "horse_racing_data" {
       )
     )
   }
-  depends_on = [google_pubsub_topic.horse_racing_data]
+  depends_on = [
+    google_project_iam_member.gcp_iam_member,
+    google_pubsub_topic.horse_racing_data,
+  ]
 }
 
 data "archive_file" "gcf_src_scheduled_pipeline" {
@@ -63,9 +68,10 @@ data "archive_file" "gcf_src_scheduled_pipeline" {
 }
 
 resource "google_storage_bucket_object" "scheduled_pipeline_function_src" {
-  name   = "functions/scheduled_pipeline/${data.archive_file.gcf_src_scheduled_pipeline.output_md5}.zip"
-  bucket = data.google_storage_bucket.horse_racing_pipelines.name
-  source = data.archive_file.gcf_src_scheduled_pipeline.output_path
+  name       = "functions/scheduled_pipeline/${data.archive_file.gcf_src_scheduled_pipeline.output_md5}.zip"
+  bucket     = data.google_storage_bucket.horse_racing_pipelines.name
+  source     = data.archive_file.gcf_src_scheduled_pipeline.output_path
+  depends_on = [google_project_iam_member.gcp_iam_member]
 }
 
 resource "google_cloudfunctions2_function" "scheduled_pipeline_function" {
@@ -95,6 +101,7 @@ resource "google_cloudfunctions2_function" "scheduled_pipeline_function" {
   }
 
   depends_on = [
+    google_project_iam_member.gcp_iam_member,
     google_storage_bucket_object.scheduled_pipeline_function_src,
     google_pubsub_topic.horse_racing_data,
   ]
