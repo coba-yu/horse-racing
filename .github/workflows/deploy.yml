@@ -63,7 +63,7 @@ jobs:
           GOOGLE_PROJECT: "yukob-horse-racing"
           GOOGLE_CREDENTIALS: ${{ secrets.GCP_CREDENTIALS }}
         run: |
-          terraform fmt -check
+          terraform fmt -check -diff
           terraform init -reconfigure -backend-config="gs.tfbackend"
           terraform validate
           terraform apply -auto-approve
