@@ -24,4 +24,4 @@ jobs:
         python -m pip install tox tox-uv
     - name: Lint and Test
       run: |
-        python -m tox -vv
+        python -m tox
