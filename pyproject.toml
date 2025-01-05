@@ -13,6 +13,7 @@ dependencies = [
     "pandas>=2.2.3,<3.0.0",
     "polars>=1.18.0,<2.0.0",
     "pyarrow>=18.1.0,<19.0.0", # pandas -> polars の変換に必要.
+    "pyyaml>=5.3.1,<5.4",
     "requests>=2.32.3,<3.0.0",
     "selenium>=4.27.1,<5.0.0",
     "tqdm>=4.67.1,<5.0.0",
@@ -28,6 +29,7 @@ build-backend = "hatchling.build"
 [dependency-groups]
 dev = [
     "jupyterlab>=4.3.4",
+    "kfp>=1.8.20",
     "mypy>=1.14.1",
     "pre-commit>=4.0.1",
     "pytest>=8.3.4",
