@@ -24,6 +24,8 @@ jobs:
               - .pre-commit-config.yaml
               - pyproject.toml
               - tox.ini
+            terraform:
+                - 'terraform/**'
 
   test:
     needs: [ changes ]
@@ -45,7 +47,9 @@ jobs:
           python -m tox
 
   deploy:
-    needs: [ test ]
+    needs: [ changes, test ]
+    if: ${{ always() }}
+    # if: ${{ always() && needs.changes.outputs.terraform == 'true' }}
     runs-on: ubuntu-latest
 
     steps:
