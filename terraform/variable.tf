@@ -7,6 +7,7 @@ variable "gcp_iam_roles" {
     "roles/cloudscheduler.admin",
     "roles/cloudfunctions.developer",
     "roles/pubsub.editor",
+    "roles/resourcemanager.projectIamAdmin",
   ]
 }
 
