@@ -77,7 +77,7 @@ jobs:
           GOOGLE_PROJECT: "yukob-horse-racing"
           GOOGLE_CREDENTIALS: ${{ secrets.GCP_CREDENTIALS }}
         run: |
-          ls src/horse_racing/app/pipelines/*/*.yaml
+          ls ../src/horse_racing/app/pipelines/*/*.yaml
 
           terraform fmt -check -diff
           terraform init -reconfigure -backend-config="gs.tfbackend"
