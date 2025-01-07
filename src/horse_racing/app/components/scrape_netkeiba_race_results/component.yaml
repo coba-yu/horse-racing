@@ -1,0 +1,16 @@
+name: scrape_netkeiba_race_results
+inputs:
+  - name: year
+    type: int
+    description: Year
+  - name: month
+    type: int
+    description: Month
+implementation:
+  container:
+    image: python:3.12  # TODO
+    command: [python -c "print('Hello, world!')"]
+    args: [
+      # --year, {inputValue: project_id},
+      # --month, {inputValue: target},
+    ]

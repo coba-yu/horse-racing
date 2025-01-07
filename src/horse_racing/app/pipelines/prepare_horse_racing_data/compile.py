@@ -1,16 +1,10 @@
 from pathlib import Path
 
-from kfp import compiler
-from kfp import dsl
+from kfp import compiler, components, dsl
 
 PIPELINE_NAME = "prepare-horse-racing-data"
 
 GCP_PROJECT_ID = "yukob-horse-racing"  # TODO: 環境変数から取得する.
-
-
-@dsl.component  # type: ignore
-def scrape_and_save_race_results(year: int, month: int) -> str:
-    return f"{year=}, {month=}"
 
 
 @dsl.pipeline(  # type: ignore
@@ -18,7 +12,11 @@ def scrape_and_save_race_results(year: int, month: int) -> str:
     pipeline_root=f"gs://horse-racing-pipelines/{PIPELINE_NAME}/history",
 )
 def pipeline(year: int, month: int) -> None:
-    task1 = scrape_and_save_race_results(year=year, month=month)  # noqa: F841
+    pipelines_dir = Path(__file__).parent
+    components_dir = pipelines_dir.parent / "components"
+
+    scrape_netkeiba_yaml = components_dir / "scrape_netkeiba_race_results" / "component.yaml"
+    scrape_netkeiba_op = components.load_component_from_file(scrape_netkeiba_yaml)  # noqa: F841
 
 
 if __name__ == "__main__":
