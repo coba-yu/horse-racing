@@ -9,16 +9,16 @@ GCP_PROJECT_ID = "yukob-horse-racing"  # TODO: 環境変数から取得する.
 
 
 @dsl.component  # type: ignore
-def add(a: int, b: int) -> int:
-    return a + b
+def scrape_and_save_race_results(year: int, month: int) -> str:
+    return f"{year=}, {month=}"
 
 
 @dsl.pipeline(  # type: ignore
     name=PIPELINE_NAME,
     pipeline_root=f"gs://horse-racing-pipelines/{PIPELINE_NAME}/history",
 )
-def pipeline() -> None:
-    task1 = add(a=1, b=5)  # noqa: F841
+def pipeline(year: int, month: int) -> None:
+    task1 = scrape_and_save_race_results(year=year, month=month)  # noqa: F841
 
 
 if __name__ == "__main__":

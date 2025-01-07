@@ -26,6 +26,11 @@ def trigger_pipeline_run(payload_json: dict[str, Any]) -> None:
     pipeline_root = payload_json["pipeline_root"]
     parameter_values = payload_json.get("parameter_values", {})
 
+    year = 2024
+    month = 12
+    parameter_values["year"] = year
+    parameter_values["month"] = month
+
     # Create a PipelineJob using the compiled pipeline from pipeline_spec_uri
     aiplatform.init(location=REGION)
     job = aiplatform.PipelineJob(
