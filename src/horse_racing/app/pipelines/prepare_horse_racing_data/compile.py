@@ -12,7 +12,8 @@ GCP_PROJECT_ID = "yukob-horse-racing"  # TODO: 環境変数から取得する.
     pipeline_root=f"gs://horse-racing-pipelines/{PIPELINE_NAME}/history",
 )
 def pipeline(year: int, month: int) -> None:
-    pipelines_dir = Path(__file__).parent
+    pipeline_dir = Path(__file__).parent
+    pipelines_dir = pipeline_dir.parent
     components_dir = pipelines_dir.parent / "components"
 
     scrape_netkeiba_yaml = components_dir / "scrape_netkeiba_race_results" / "component.yaml"
