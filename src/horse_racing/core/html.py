@@ -12,7 +12,7 @@ from horse_racing.core.logging import logger
 
 P = ParamSpec("P")
 
-DEFAULT_SLEEP_SECONDS = 30.0
+DEFAULT_SLEEP_SECONDS = 10.0
 USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36",
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36",
@@ -33,8 +33,8 @@ def random_choice_user_agent() -> str:
     return random.choice(USER_AGENTS)
 
 
-def make_cache_dir(sub_dir: str) -> str:
-    tmp_dir = os.path.join("data", "cache", "html", sub_dir)
+def make_cache_dir(sub_dir: str, root_dir: str) -> str:
+    tmp_dir = os.path.join(root_dir, "data", "cache", "html", sub_dir)
     os.makedirs(tmp_dir, exist_ok=True)
     return tmp_dir
 
@@ -47,12 +47,14 @@ def get_html_with_cache(
         url: str,
         *args: P.args,
         sleep_seconds: float = DEFAULT_SLEEP_SECONDS,
+        root_dir: str = ".",
         cache_sub_path: str | Path | None = None,
         **kwds: P.kwargs,
     ) -> str:
+        cache_path: str | None = None
         if cache_sub_path is not None:
             cache_sub_dir = os.path.dirname(cache_sub_path)
-            cache_dir = make_cache_dir(sub_dir=cache_sub_dir)
+            cache_dir = make_cache_dir(sub_dir=cache_sub_dir, root_dir=root_dir)
 
             cache_file_name = os.path.basename(cache_sub_path)
             cache_path = os.path.join(cache_dir, cache_file_name)
@@ -66,7 +68,7 @@ def get_html_with_cache(
         html = func(url, *args, **kwds)
         sleep(sleep_seconds)
 
-        if cache_sub_path is not None:
+        if cache_sub_path is not None and cache_path is not None:
             logger.info(f"Save cache: {cache_path}")
             with open(cache_path, "w") as f:
                 f.write(html)

@@ -34,9 +34,16 @@ class HorseUsecase:
         "賞金",
     ]
 
+    def __init__(self, root_dir: str = ".") -> None:
+        self.root_dir = root_dir
+
     def _get_horse_html(self, horse_id: str, race_date: str) -> BeautifulSoup:
         url = f"https://db.netkeiba.com/horse/{horse_id}"
-        html = get_html(url=url, cache_sub_path=Path("horses", f"race_date={race_date}", f"{horse_id}.html"))
+        html = get_html(
+            url=url,
+            root_dir=self.root_dir,
+            cache_sub_path=Path("horses", f"race_date={race_date}", f"{horse_id}.html"),
+        )
         return get_soup(html)
 
     def get_horse_profile(self, horse_id: str, race_date: str) -> pl.DataFrame:

@@ -40,8 +40,13 @@ class RaceScheduleUsecase:
         "馬体重 (増減)",
     ]
 
-    def __init__(self, driver: ChromeDriver) -> None:
+    def __init__(
+        self,
+        driver: ChromeDriver | None = None,
+        root_dir: str = ".",
+    ) -> None:
         self.driver = driver
+        self.root_dir = root_dir
 
     def _remove_whitespace(self, df: pl.DataFrame, column: str) -> pl.DataFrame:
         df = df.with_columns(pl.col(column).str.replace(r"^\s+", "").alias(column))
@@ -72,10 +77,9 @@ class RaceScheduleUsecase:
             },
         )
 
-    @staticmethod
-    def get_race_dates(year: int, month: int) -> list[str]:
+    def get_race_dates(self, year: int, month: int) -> list[str]:
         url = f"https://race.netkeiba.com/top/calendar.html?year={year}&month={month}"
-        html = get_html(url)
+        html = get_html(url, root_dir=self.root_dir)
         soup = get_soup(html)
 
         table = soup.find("table", class_="Calendar_Table")
@@ -91,12 +95,14 @@ class RaceScheduleUsecase:
         return race_dates
 
     def get_race_ids(self, race_date: str) -> list[str]:
-        cache_dir = make_cache_dir(sub_dir="race_schedule")
+        cache_dir = make_cache_dir(sub_dir="race_schedule", root_dir=self.root_dir)
         cache_path = os.path.join(cache_dir, f"{race_date}.html")
         if os.path.isfile(cache_path):
             with open(cache_path, "r") as f:
                 html = f.read()
         else:
+            if self.driver is None:
+                raise ValueError(f"Cache is not found but self.driver is None.\n{cache_path=}")
             url = f"https://race.netkeiba.com/top/race_list.html?kaisai_date={race_date}"
             html = self.driver.get_page_source(url=url)
             with open(cache_path, "w") as f:
@@ -123,6 +129,7 @@ class RaceScheduleUsecase:
         url = f"https://race.netkeiba.com/race/result.html?race_id={race_id}"
         html = get_html(
             url=url,
+            root_dir=self.root_dir,
             cache_sub_path=os.path.join("race_results", f"race_date={race_date}", f"{race_id}.html"),
         )
 
