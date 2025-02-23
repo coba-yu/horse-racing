@@ -4,6 +4,7 @@ from io import StringIO
 
 import pandas as pd
 import polars as pl
+from bs4 import BeautifulSoup
 from bs4.element import Tag
 
 from horse_racing.core.chrome import ChromeDriver
@@ -19,13 +20,15 @@ def extract_race_date(href: str) -> str | None:
 
 
 class RaceScheduleUsecase:
+    horse_number_raw_column = "馬 番"
+    horse_number_column = "horse_number"
     horse_name_column = "馬名"
     jockey_name_column = "騎手"
     trainer_name_column = "厩舎"
     race_result_columns = [
         "着 順",
         "枠",
-        "馬 番",
+        horse_number_raw_column,
         horse_name_column,
         "性齢",
         "斤量",
@@ -125,6 +128,39 @@ class RaceScheduleUsecase:
 
         return race_ids
 
+    @classmethod
+    def _get_payout_df(cls, soup: BeautifulSoup) -> pl.DataFrame:
+        payout_pdfs = []
+        for t in soup.find_all("table", class_="Payout_Detail_Table"):
+            pdf_list = pd.read_html(StringIO(str(t)))
+            if len(pdf_list) <= 0:
+                continue
+            pdf = pdf_list[0]
+            pdf.columns = ["ticket_type", "horse_numbers", "payouts", "populars"]
+            payout_pdfs.append(pl.from_pandas(pdf))
+
+        payout_df = pl.concat(payout_pdfs, how="vertical")
+        payout_df = payout_df.drop("populars")
+        payout_df = payout_df.with_columns(
+            pl.col("horse_numbers").str.split(" "),
+            pl.col("payouts").str.replace_all(",", "").str.replace_all("円", "").str.extract_all(r"[0-9]+"),
+        )
+
+        win_column = "単勝"
+        win_payout_df = payout_df.filter(pl.col("ticket_type") == win_column).explode(["horse_numbers", "payouts"])
+        win_payout_df = win_payout_df.select(
+            pl.col("horse_numbers").alias(cls.horse_number_column),
+            pl.col("payouts").cast(pl.Int32).alias("win_payout"),
+        )
+
+        place_column = "複勝"
+        place_payout_df = payout_df.filter(pl.col("ticket_type") == place_column).explode(["horse_numbers", "payouts"])
+        place_payout_df = place_payout_df.select(
+            pl.col("horse_numbers").alias(cls.horse_number_column),
+            pl.col("payouts").cast(pl.Int32).alias("place_payout"),
+        )
+        return win_payout_df.join(place_payout_df, on=cls.horse_number_column, how="outer")
+
     def get_race_result(self, race_id: str, race_date: str) -> pl.DataFrame:
         url = f"https://race.netkeiba.com/race/result.html?race_id={race_id}"
         html = get_html(
@@ -138,6 +174,7 @@ class RaceScheduleUsecase:
             return pl.DataFrame()
         df = pl.from_pandas(pdf_list[0])
         df = df.with_columns(race_id=pl.lit(race_id), race_date=pl.lit(race_date))
+        df = df.rename({self.horse_number_raw_column: self.horse_number_column})
 
         soup = get_soup(html)
         table = soup.find("table", class_="RaceTable01")
@@ -177,4 +214,11 @@ class RaceScheduleUsecase:
         trainer_id_df = trainer_id_df.with_columns(
             pl.concat_str(pl.col("trainer_label"), pl.col(self.trainer_name_column)).alias(self.trainer_name_column)
         )
-        return df.join(trainer_id_df, on=self.trainer_name_column, how="left")
+        df = df.join(trainer_id_df, on=self.trainer_name_column, how="left")
+
+        # payout
+        suffix = "_right"
+        df = df.join(self._get_payout_df(soup=soup), on=self.horse_number_column, how="left", suffix=suffix)
+        df = df.drop(f"{self.horse_number_column}{suffix}")
+
+        return df
