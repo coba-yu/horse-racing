@@ -1,6 +1,7 @@
 import os.path
 import re
 from io import StringIO
+from typing import Any
 
 import pandas as pd
 import polars as pl
@@ -128,6 +129,40 @@ class RaceScheduleUsecase:
 
         return race_ids
 
+    @staticmethod
+    def _get_race_info(soup: BeautifulSoup) -> dict[str, Any]:
+        race_info: dict[str, Any] = {}
+
+        # => "1R"
+        race_list_name_box = soup.find("div", class_="RaceList_NameBox")
+        race_num_tag = race_list_name_box.select_one(".RaceList_Item01 .RaceNum")
+        if race_num_tag is None:
+            race_info["race_number"] = None
+        else:
+            race_info["race_number"] = race_num_tag.get_text(strip=True)
+
+        # => "3歳未勝利"
+        race_name_tag = race_list_name_box.select_one(".RaceList_Item02 .RaceName")
+        if race_num_tag is None:
+            race_info["race_name"] = None
+        else:
+            race_info["race_name"] = race_name_tag.get_text(strip=True)
+
+        # => "10:10発走 / ダ1400m (左) / 天候:晴 / 馬場:良"
+        race_data_1_tag = race_list_name_box.select_one(".RaceList_Item02 .RaceData01")
+        if race_data_1_tag is None:
+            race_info_texts = []
+        else:
+            race_info_texts = re.sub(r"\s+", "", race_data_1_tag.get_text(strip=True)).split("/")
+
+        for i, k in enumerate(("start_at", "distance", "weather", "field_condition")):
+            if len(race_info_texts) >= i + 1:
+                race_info[k] = race_info_texts[i]
+            else:
+                race_info[k] = None
+
+        return dict(**race_info)
+
     @classmethod
     def _get_payout_df(cls, soup: BeautifulSoup) -> pl.DataFrame:
         payout_pdfs = []
@@ -177,6 +212,10 @@ class RaceScheduleUsecase:
         df = df.rename({self.horse_number_raw_column: self.horse_number_column})
 
         soup = get_soup(html)
+
+        race_info = self._get_race_info(soup=soup)
+        df = df.with_columns([pl.lit(v).alias(k) for k, v in race_info.items()])
+
         table = soup.find("table", class_="RaceTable01")
         horse_id_df = self._extracted_id_df(
             table,
