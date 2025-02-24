@@ -7,7 +7,6 @@ on:
 env:
   GCP_PROJECT: "yukob-horse-racing"
   REGION: "asia-northeast1"
-  HORSE_RACING_IMAGE_NAME: "horse-racing"
 
 jobs:
   changes:
@@ -79,9 +78,9 @@ jobs:
           version: '>= 363.0.0'
 
       - name: Authorize Docker push
-        run: gcloud auth configure-docker
+        run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev
 
-      - name: Build Docker image
+      - name: Build and push docker image
         run: |
           docker build -t ${{ env.REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT }}/${{ github.event.repository.name }}/${{ env.IMAGE_NAME }}:${{ github.sha }} .
           docker push ${{ env.REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT }}/${{ github.event.repository.name }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
