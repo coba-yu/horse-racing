@@ -65,6 +65,9 @@ resource "google_cloud_run_v2_job" "scrape_netkeiba" {
       timeout         = "21600s"
     }
   }
+  depends_on = [
+    google_service_account.yukob_horse_racing_job,
+  ]
 }
 
 # data "archive_file" "gcf_src_scheduled_pipeline" {
