@@ -1,3 +1,4 @@
+# https://docs.astral.sh/uv/guides/integration/docker/
 FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
 
 WORKDIR /app
