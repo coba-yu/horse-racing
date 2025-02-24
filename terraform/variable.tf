@@ -28,3 +28,11 @@ variable "region" {
 variable "service_account_email" {
   default = "yukob-horse-racing@yukob-horse-racing.iam.gserviceaccount.com"
 }
+
+variable "gcp_artifact_repository_name" {
+  default = "horse-racing"
+}
+
+variable "gcp_horse_racing_image_name" {
+  default = "horse-racing"
+}

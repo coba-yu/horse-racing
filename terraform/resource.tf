@@ -52,6 +52,21 @@ resource "google_cloud_scheduler_job" "horse_racing_data" {
   ]
 }
 
+resource "google_cloud_run_v2_job" "scrape_netkeiba" {
+  location = var.region
+  name     = "scrape-netkeiba-job"
+  template {
+    template {
+      containers {
+        image                = "${var.region}-docker.pkg.dev/${var.google_project}/${var.gcp_artifact_repository_name}/${var.gcp_horse_racing_image_name}:latest"
+        service_account_name = "${google_service_account.yukob_horse_racing_job.account_id}@${var.google_project}.iam.gserviceaccount.com"
+        command              = ["python", "src/app/runs/jobs/scrape_netkeiba.py"]
+      }
+      timeout = "21600s"
+    }
+  }
+}
+
 # data "archive_file" "gcf_src_scheduled_pipeline" {
 #   type        = "zip"
 #   source_dir  = "${path.module}/../src/horse_racing/app/functions/scheduled_pipeline"
