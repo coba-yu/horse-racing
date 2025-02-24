@@ -82,7 +82,7 @@ jobs:
 
       - name: Build and push docker image
         run: |
-          REPOSITORY_NAME=${GITHUB_REPOSITORY#${GITHUB_REPOSITORY_OWNER}/}"
+          REPOSITORY_NAME="${GITHUB_REPOSITORY#${GITHUB_REPOSITORY_OWNER}/}"
           docker build -t ${{ env.REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT }}/${REPOSITORY_NAME}/${{ env.IMAGE_NAME }}:${{ github.sha }} .
           docker push ${{ env.REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT }}/${REPOSITORY_NAME}/${{ env.IMAGE_NAME }}:${{ github.sha }}
         env:
