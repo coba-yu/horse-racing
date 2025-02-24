@@ -28,15 +28,6 @@ resource "google_cloud_scheduler_job" "horse_racing_data" {
 
   pubsub_target {
     topic_name = google_pubsub_topic.horse_racing_data.id
-    data = base64encode(
-      jsonencode(
-        {
-          pipeline_display_name = "horse-racing-data"
-          pipeline_spec_uri     = "gs://${data.google_storage_bucket.horse_racing_pipelines.name}/prepare_horse_racing_data/pipeline.yaml"
-          pipeline_root         = "gs://${data.google_storage_bucket.horse_racing_pipelines.name}/prepare_horse_racing_data/history"
-        }
-      )
-    )
   }
   depends_on = [
     google_project_iam_member.gcp_iam_member,
