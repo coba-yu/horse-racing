@@ -22,22 +22,19 @@ jobs:
         with:
           filters: |
             src:
+              - .github/workflows/deploy.yml
               - 'src/**'
-              - .pre-commit-config.yaml
+              - Dockerfile
               - pyproject.toml
+            ci:
+              - .pre-commit-config.yaml
               - tox.ini
             terraform:
               - 'terraform/**'
-            docker:
-              - 'src/horse_racing/app/runs/**'
-              - 'src/horse_racing/core/**'
-              - 'src/horse_racing/usecase/**'
-              - Dockerfile
-              - pyproject.toml
 
   test:
     needs: [ changes ]
-    if: ${{ needs.changes.outputs.src == 'true' }}
+    if: ${{ needs.changes.outputs.src == 'true' || needs.changes.outputs.ci == 'true' }}
     runs-on: ubuntu-latest
 
     steps:
@@ -59,7 +56,7 @@ jobs:
 
   deploy-docker:
     needs: [ changes, test ]
-    if: ${{ always() && needs.changes.outputs.docker == 'true' }}
+    if: ${{ needs.changes.outputs.src == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
