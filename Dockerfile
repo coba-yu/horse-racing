@@ -9,3 +9,5 @@ COPY README.md /app/README.md
 RUN uv sync
 
 ENV PYTHONPATH=/app/src
+
+ENTRYPOINT ["uv", "run"]
