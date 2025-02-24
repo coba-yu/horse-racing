@@ -81,14 +81,37 @@ jobs:
       - name: Authorize Docker push
         run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev
 
-      - name: Build and push docker image
+      - name: Get repository name
         run: |
-          REPOSITORY_NAME="${GITHUB_REPOSITORY#${GITHUB_REPOSITORY_OWNER}/}"
-          docker build -t ${{ env.REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT }}/${REPOSITORY_NAME}/${{ env.IMAGE_NAME }}:${{ github.sha }} .
-          docker push ${{ env.REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT }}/${REPOSITORY_NAME}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          echo "REPOSITORY_NAME=${GITHUB_REPOSITORY#${GITHUB_REPOSITORY_OWNER}/}" >> ${GITHUB_ENV}
+
+      - name: Build docker image
+        run: |
+          docker build -t ${{ env.REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT }}/${{ env.REPOSITORY_NAME }}/${{ env.IMAGE_NAME }}:${{ github.sha }} .
+          docker push ${{ env.REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT }}/${{ env.REPOSITORY_NAME }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
         env:
           REGION: ${{ env.REGION }}
           GCP_PROJECT: ${{ env.GCP_PROJECT }}
+          IMAGE_NAME: ${{ env.HORSE_RACING_IMAGE_NAME }}
+
+      - name: Build docker image
+        run: |
+          FULL_IMAGE=${{ env.REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT }}/${{ env.REPOSITORY_NAME }}/${{ env.IMAGE_NAME }}
+          docker build -t $FULL_IMAGE:${{ github.sha }} .
+          docker tag $FULL_IMAGE:${{ github.sha }} $FULL_IMAGE:latest
+        env:
+          IMAGE_NAME: ${{ env.HORSE_RACING_IMAGE_NAME }}
+
+      - name: Push docker image
+        run: |
+          docker push ${{ env.REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT }}/${{ env.REPOSITORY_NAME }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+        env:
+          IMAGE_NAME: ${{ env.HORSE_RACING_IMAGE_NAME }}
+
+      - name: Push docker image (latest)
+        run: |
+          docker push ${{ env.REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT }}/${{ env.REPOSITORY_NAME }}/${{ env.IMAGE_NAME }}:latest
+        env:
           IMAGE_NAME: ${{ env.HORSE_RACING_IMAGE_NAME }}
 
       - name: terraform
