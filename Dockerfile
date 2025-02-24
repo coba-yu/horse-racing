@@ -10,7 +10,4 @@ RUN uv sync \
     && mv /app/.venv /opt/venv
 
 ENV PATH=/opt/venv/bin:$PATH
-ENV VIRTUAL_ENV=/opt/venv
 ENV PYTHONPATH=/app/src
-
-ENTRYPOINT ["/opt/venv/bin/python3"]
