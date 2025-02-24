@@ -27,7 +27,13 @@ jobs:
               - pyproject.toml
               - tox.ini
             terraform:
-                - 'terraform/**'
+              - 'terraform/**'
+            docker:
+              - 'src/**'
+              - '!src/horse_racing/app/**'
+              - 'src/horse_racing/app/runs/**'
+              - Dockerfile
+              - pyproject.toml
 
   test:
     needs: [ changes ]
@@ -51,22 +57,12 @@ jobs:
         run: |
           python -m tox
 
-  deploy:
+  deploy-docker:
     needs: [ changes, test ]
-    if: ${{ always() }}
-    # if: ${{ always() && needs.changes.outputs.terraform == 'true' }}
+    if: ${{ always() && needs.changes.outputs.docker == 'true' }}
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_wrapper: false
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
-      - name: Install dependencies
-        run: |
-          uv sync
 
       - id: auth
         uses: google-github-actions/auth@v2
@@ -113,6 +109,26 @@ jobs:
           docker push ${{ env.REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT }}/${{ env.REPOSITORY_NAME }}/${{ env.IMAGE_NAME }}:latest
         env:
           IMAGE_NAME: ${{ env.HORSE_RACING_IMAGE_NAME }}
+
+  deploy:
+    needs: [ changes, test ]
+    if: ${{ always() }}
+    # if: ${{ always() && needs.changes.outputs.terraform == 'true' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        run: |
+          uv sync
 
       - name: terraform
         working-directory: terraform
