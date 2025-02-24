@@ -82,8 +82,9 @@ jobs:
 
       - name: Build and push docker image
         run: |
-          docker build -t ${{ env.REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT }}/${{ github.event.repository.name }}/${{ env.IMAGE_NAME }}:${{ github.sha }} .
-          docker push ${{ env.REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT }}/${{ github.event.repository.name }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          REPOSITORY_NAME=${GITHUB_REPOSITORY#${GITHUB_REPOSITORY_OWNER}/}"
+          docker build -t ${{ env.REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT }}/${REPOSITORY_NAME}/${{ env.IMAGE_NAME }}:${{ github.sha }} .
+          docker push ${{ env.REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT }}/${REPOSITORY_NAME}/${{ env.IMAGE_NAME }}:${{ github.sha }}
         env:
           REGION: ${{ env.REGION }}
           GCP_PROJECT: ${{ env.GCP_PROJECT }}
