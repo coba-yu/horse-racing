@@ -28,6 +28,11 @@ resource "google_cloud_scheduler_job" "horse_racing_data" {
 
   pubsub_target {
     topic_name = google_pubsub_topic.horse_racing_data.id
+    data = base64encode(
+      jsonencode({
+        message = "trigger scheduled run"
+      })
+    )
   }
   depends_on = [
     google_project_iam_member.gcp_iam_member,
