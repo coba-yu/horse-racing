@@ -59,7 +59,7 @@ jobs:
 
   deploy-docker:
     needs: [ changes, test ]
-    if: ${{ needs.changes.outputs.docker == 'true' }}
+    if: ${{ always() && needs.changes.outputs.docker == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
