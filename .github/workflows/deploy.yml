@@ -29,9 +29,9 @@ jobs:
             terraform:
               - 'terraform/**'
             docker:
-              - 'src/**'
-              - '!src/horse_racing/app/**'
               - 'src/horse_racing/app/runs/**'
+              - 'src/horse_racing/core/**'
+              - 'src/horse_racing/usecase/**'
               - Dockerfile
               - pyproject.toml
 
@@ -59,7 +59,7 @@ jobs:
 
   deploy-docker:
     needs: [ changes, test ]
-    if: ${{ always() && needs.changes.outputs.docker == 'true' }}
+    if: ${{ needs.changes.outputs.docker == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -111,7 +111,7 @@ jobs:
           IMAGE_NAME: ${{ env.HORSE_RACING_IMAGE_NAME }}
 
   deploy:
-    needs: [ changes, test ]
+    needs: [ changes, deploy-docker ]
     if: ${{ always() }}
     # if: ${{ always() && needs.changes.outputs.terraform == 'true' }}
     runs-on: ubuntu-latest
