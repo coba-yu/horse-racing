@@ -13,6 +13,18 @@ resource "google_project_iam_member" "gcp_iam_member" {
   member   = "serviceAccount:${data.google_service_account.yukob_horse_racing.email}"
 }
 
+resource "google_service_account" "yukob_horse_racing_job" {
+  account_id                   = "yukob-horse-racing-job"
+  create_ignore_already_exists = true
+}
+
+resource "google_project_iam_member" "yukob_horse_racing_job" {
+  for_each = toset(var.gcp_iam_roles__yukob_horse_racing_job)
+  project  = var.google_project
+  role     = each.value
+  member   = "serviceAccount:${google_service_account.yukob_horse_racing_job.email}"
+}
+
 #==================#
 # data preparation #
 #==================#
