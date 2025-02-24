@@ -59,7 +59,7 @@ resource "google_cloud_run_v2_job" "scrape_netkeiba" {
     template {
       containers {
         image   = "${var.region}-docker.pkg.dev/${var.google_project}/${var.gcp_artifact_repository_name}/${var.gcp_horse_racing_image_name}:latest"
-        command = ["python", "src/horse_racing/app/runs/jobs/scrape_netkeiba.py"]
+        command = ["src/horse_racing/app/runs/jobs/scrape_netkeiba.py"]
       }
       service_account = "${google_service_account.yukob_horse_racing_job.account_id}@${var.google_project}.iam.gserviceaccount.com"
       timeout         = "21600s"
