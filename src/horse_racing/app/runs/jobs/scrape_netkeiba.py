@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from argparse import ArgumentParser
 
+from horse_racing.core.chrome import ChromeDriver
 from horse_racing.core.logging import logger
 
 
@@ -16,6 +17,9 @@ def main() -> None:
     args = Argument()
     args, _ = parser.parse_known_args(namespace=args)
     logger.info(f"{args=}")
+
+    driver = ChromeDriver()
+    print(driver)
 
 
 if __name__ == "__main__":
