@@ -34,23 +34,23 @@ resource "google_pubsub_topic" "horse_racing_data" {
   depends_on = [google_project_iam_member.gcp_iam_member]
 }
 
-resource "google_cloud_scheduler_job" "horse_racing_data" {
-  name     = "horse-racing-data"
-  schedule = "0 22 * * *"
-
-  pubsub_target {
-    topic_name = google_pubsub_topic.horse_racing_data.id
-    data = base64encode(
-      jsonencode({
-        message = "trigger scheduled run"
-      })
-    )
-  }
-  depends_on = [
-    google_project_iam_member.gcp_iam_member,
-    google_pubsub_topic.horse_racing_data,
-  ]
-}
+# resource "google_cloud_scheduler_job" "horse_racing_data" {
+#   name     = "horse-racing-data"
+#   schedule = "0 22 * * *"
+#
+#   pubsub_target {
+#     topic_name = google_pubsub_topic.horse_racing_data.id
+#     data = base64encode(
+#       jsonencode({
+#         message = "trigger scheduled run"
+#       })
+#     )
+#   }
+#   depends_on = [
+#     google_project_iam_member.gcp_iam_member,
+#     google_pubsub_topic.horse_racing_data,
+#   ]
+# }
 
 resource "google_cloud_run_v2_job" "scrape_netkeiba" {
   location = var.region
