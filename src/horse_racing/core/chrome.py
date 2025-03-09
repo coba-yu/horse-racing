@@ -11,6 +11,7 @@ class ChromeDriver:
         self._options.add_argument("--headless")
         self._options.add_argument("--no-sandbox")
         self._options.add_argument("--disable-gpu")
+        self._options.add_argument("--disable-dev-shm-usage")
 
         self._sleep_seconds = sleep_seconds
 
