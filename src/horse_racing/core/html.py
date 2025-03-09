@@ -33,8 +33,8 @@ def random_choice_user_agent() -> str:
     return random.choice(USER_AGENTS)
 
 
-def make_cache_dir(sub_dir: str, root_dir: str) -> str:
-    tmp_dir = os.path.join(root_dir, "data", "cache", "html", sub_dir)
+def make_cache_dir(sub_dir: str, root_dir: str | Path) -> str:
+    tmp_dir = os.path.join(str(root_dir), "data", "cache", "html", sub_dir)
     os.makedirs(tmp_dir, exist_ok=True)
     return tmp_dir
 
