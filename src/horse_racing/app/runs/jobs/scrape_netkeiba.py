@@ -6,7 +6,7 @@ from horse_racing.core.logging import logger
 from horse_racing.usecase.race_schedule import RaceScheduleUsecase
 
 
-@dataclass(frozen=True)
+@dataclass
 class Argument:
     race_date: str = ""
 
