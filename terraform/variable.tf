@@ -18,7 +18,7 @@ variable "gcp_iam_roles" {
 variable "gcp_iam_roles__yukob_horse_racing_job" {
   default = [
     # https://cloud.google.com/storage/docs/access-control/iam-roles
-    "roles/storage.objectUser",
+    "roles/storage.admin",
     "roles/iam.serviceAccountUser",
   ]
 }
