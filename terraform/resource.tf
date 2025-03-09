@@ -29,6 +29,12 @@ resource "google_project_iam_member" "yukob_horse_racing_job" {
 # data preparation #
 #==================#
 
+resource "google_storage_bucket" "netkeiba_htmls" {
+  name          = "yukob-netkeiba-htmls"
+  location      = var.region
+  force_destroy = false
+}
+
 resource "google_pubsub_topic" "horse_racing_data" {
   name       = "horse-racing-data"
   depends_on = [google_project_iam_member.gcp_iam_member]
