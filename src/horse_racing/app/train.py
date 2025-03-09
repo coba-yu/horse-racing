@@ -8,10 +8,14 @@ import polars as pl
 
 from horse_racing.core.logging import logger
 
+HORSE_NAME_RAW_COLUMN = "馬名"
+JOCKEY_NAME_RAW_COLUMN = "騎手"
+TRAINER_NAME_RAW_COLUMN = "厩舎"
+
 
 @dataclass
 class Config:
-    latest_train_start_date: str = "20220801"
+    latest_train_start_date: str = "20220701"
     latest_train_end_date: str = "20240931"
     features: list[str] = field(
         default_factory=lambda: [
@@ -42,28 +46,67 @@ class Config:
 @dataclass
 class RawData:
     result_df: pl.DataFrame
-    horse_name_to_id: dict[str, str]
-    horse_id_to_name: dict[str, str]
-    jockey_name_to_id: dict[str, str]
-    trainer_name_to_id: dict[str, str]
+    horse_id_df: pl.DataFrame
+    jockey_id_df: pl.DataFrame
+    trainer_id_df: pl.DataFrame
+
+
+def _get_id_df(df: pl.DataFrame, raw_name_column: str, name_column: str, id_column: str) -> pl.DataFrame:
+    return df.select(pl.col(raw_name_column).alias(name_column), pl.col(id_column)).unique()
 
 
 def load_data(data_dir: Path) -> RawData:
     result_df = pl.read_parquet(data_dir / "parquet" / "race_results")
-
-    horse_name_to_id = {name: str(horse_id) for name, horse_id in result_df[["馬名", "horse_id"]].to_numpy()}
-    horse_id_to_name = {horse_id: str(name) for name, horse_id in result_df[["馬名", "horse_id"]].to_numpy()}
-
-    jockey_name_to_id = {name: str(jockey_id) for name, jockey_id in result_df[["騎手", "jockey_id"]].to_numpy()}
-    trainer_name_to_id = {name: str(trainer_id) for name, trainer_id in result_df[["厩舎", "trainer_id"]].to_numpy()}
-
     return RawData(
         result_df=result_df,
-        horse_name_to_id=horse_name_to_id,
-        horse_id_to_name=horse_id_to_name,
-        jockey_name_to_id=jockey_name_to_id,
-        trainer_name_to_id=trainer_name_to_id,
+        horse_id_df=_get_id_df(
+            result_df,
+            raw_name_column=HORSE_NAME_RAW_COLUMN,
+            name_column="horse_name",
+            id_column="horse_id",
+        ),
+        jockey_id_df=_get_id_df(
+            result_df,
+            raw_name_column=JOCKEY_NAME_RAW_COLUMN,
+            name_column="jockey_name",
+            id_column="jockey_id",
+        ),
+        trainer_id_df=_get_id_df(
+            result_df,
+            raw_name_column=TRAINER_NAME_RAW_COLUMN,
+            name_column="trainer_name",
+            id_column="trainer_id",
+        ),
     )
+
+
+def _label_encode(df: pl.DataFrame, column: str, label_dict: dict[str, int]) -> pl.DataFrame:
+    return df.with_columns(
+        pl.col(column)
+        .str.extract(rf'({"|".join(list(label_dict))})')
+        .replace_strict(label_dict, default=-1)
+        .cast(pl.Int8)
+    )
+
+
+def encode_sex(df: pl.DataFrame) -> pl.DataFrame:
+    return _label_encode(df, column="sex", label_dict={"牡": 0, "牝": 1, "セ": 2})
+
+
+def encode_rotate(df: pl.DataFrame) -> pl.DataFrame:
+    return _label_encode(df, column="rotate", label_dict={"左": 0, "右": 1})
+
+
+def encode_field_type(df: pl.DataFrame) -> pl.DataFrame:
+    return _label_encode(df, column="field_type", label_dict={"芝": 0, "ダ": 1})
+
+
+def encode_weather(df: pl.DataFrame) -> pl.DataFrame:
+    return _label_encode(df, column="weather", label_dict={"晴": 0, "曇": 1, "雨": 2})
+
+
+def encode_field_condition(df: pl.DataFrame) -> pl.DataFrame:
+    return _label_encode(df, column="field_condition", label_dict={"良": 0})
 
 
 def _remove_debut_race(df: pl.DataFrame) -> pl.DataFrame:
@@ -84,28 +127,17 @@ def preprocess_train_data(
     select_cols = [
         pl.col("枠").cast(pl.Int32).alias("group"),
         pl.col("horse_number").cast(pl.Int32).alias("number"),
-        pl.col("性齢")
-        .str.extract(r"(牡|牝|セ)")
-        .replace_strict({"牡": 0, "牝": 1, "セ": 2}, default=-1)
-        .cast(pl.Int8)
-        .alias("sex"),
+        pl.col("性齢").alias("sex"),
         pl.col("性齢").str.extract(r"(\d+)").cast(pl.Int32).alias("age"),
         pl.col("斤量").cast(pl.Float32).alias("weight"),
         # race
         pl.col("race_number").str.extract(r"(\d+)").cast(pl.Int32).alias("race_number"),
         pl.col("start_at").str.extract(r"^(\d+)").cast(pl.Int32).alias("start_hour"),
         pl.col("distance").str.extract(r"(\d+)").cast(pl.Int32).alias("distance"),
-        pl.col("distance")
-        .str.extract(r"(左|右)")
-        .replace_strict({"左": 0, "右": 1}, default=-1)
-        .cast(pl.Int8)
-        .alias("rotate"),
-        pl.col("distance").str.extract(r"(芝|ダ)").replace_strict({"芝": 0, "ダ": 1}, default=-1).alias("field_type"),
-        pl.col("weather")
-        .str.extract(r"(晴|曇|雨)")
-        .replace_strict({"晴": 0, "曇": 1, "雨": 2}, default=-1)
-        .cast(pl.Int8),
-        pl.col("field_condition").str.extract(r"(良|悪)").replace_strict({"良": 0, "悪": 1}, default=-1).cast(pl.Int8),
+        pl.col("distance").alias("rotate"),
+        pl.col("distance").alias("field_type"),
+        pl.col("weather"),
+        pl.col("field_condition"),
         # fresh
         pl.col("人 気").cast(pl.Int32).alias("popular"),
         pl.col("単勝 オッズ").cast(pl.Float32).alias("odds"),
@@ -124,6 +156,13 @@ def preprocess_train_data(
     if "weight_diff" in features or "weight_diff_dev" in features:
         select_cols.append(pl.col("馬体重 (増減)").str.extract(r"\(([-\+\d]+)\)").cast(pl.Int32).alias("weight_diff"))
     processed_df = data.result_df.filter(~pl.col("着 順").is_in({"中止", "除外", "取消"})).select(select_cols)
+
+    # label encoding
+    processed_df = encode_sex(processed_df)
+    processed_df = encode_rotate(processed_df)
+    processed_df = encode_field_type(processed_df)
+    processed_df = encode_weather(processed_df)
+    processed_df = encode_field_condition(processed_df)
 
     # target encoding
     horse_target_encoded_df = processed_df.group_by("horse_id").agg(
@@ -257,6 +296,9 @@ def main() -> None:
 
     out_data_dir = processed_data_dir / now
     os.makedirs(out_data_dir, exist_ok=True)
+    raw_data.horse_id_df.write_parquet(out_data_dir / "horse_id.parquet")
+    raw_data.jockey_id_df.write_parquet(out_data_dir / "jockey_id.parquet")
+    raw_data.trainer_id_df.write_parquet(out_data_dir / "trainer_id.parquet")
     if weight_diff_avg_df is not None:
         weight_diff_avg_df.write_parquet(out_data_dir / "weight_diff_avg.parquet")
     horse_target_encoded_df.write_parquet(out_data_dir / "horse_target_encoded.parquet")

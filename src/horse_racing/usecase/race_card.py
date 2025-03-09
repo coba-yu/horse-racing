@@ -1,4 +1,6 @@
+import os
 from io import StringIO
+from pathlib import Path
 
 import pandas as pd
 import polars as pl
@@ -14,9 +16,14 @@ class RaceCardUsecase:
         self,
         driver: ChromeDriver | None = None,
         root_dir: str = ".",
+        cache_dir: Path | None = None,
     ) -> None:
         self.driver = driver
         self.root_dir = root_dir
+
+        self.cache_dir = cache_dir
+        if self.cache_dir is not None:
+            os.makedirs(self.cache_dir, exist_ok=True)
 
         self._soup: BeautifulSoup | None = None
 
@@ -24,11 +31,23 @@ class RaceCardUsecase:
         if self._soup is not None:
             return self._soup
 
-        if self.driver is None:
-            raise ValueError("driver is not set")
+        if self.cache_dir is None:
+            cache_html = None
+        else:
+            cache_html = self.cache_dir / f"{race_id}.html"
 
-        url = f"https://race.netkeiba.com/race/shutuba.html?race_id={race_id}"
-        html = self.driver.get_page_source(url=url)
+        if cache_html is not None and cache_html.exists():
+            with open(cache_html, "r") as f:
+                html = f.read()
+        else:
+            if self.driver is None:
+                raise ValueError("driver is not set")
+            url = f"https://race.netkeiba.com/race/shutuba.html?race_id={race_id}"
+            html = self.driver.get_page_source(url=url)
+            if cache_html is not None:
+                with open(cache_html, "w") as f:
+                    f.write(html)
+
         self._soup = get_soup(html)
         return self._soup
 
