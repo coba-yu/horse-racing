@@ -6,10 +6,15 @@ from google.cloud.storage import (
     Client,
 )
 
+from horse_racing.core.logging import logger
+
 
 class StorageClient:
     def __init__(self) -> None:
-        self._client = Client(project=os.environ["GOOGLE_PROJECT"])
+        project = os.getenv("GOOGLE_PROJECT")
+        if project is None:
+            logger.warning("GOOGLE_PROJECT is not set.")
+        self._client = Client(project=project)
 
     def get_bucket(self, bucket_name: str) -> Bucket:
         return self._client.get_bucket(bucket_name)
