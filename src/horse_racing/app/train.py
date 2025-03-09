@@ -71,7 +71,16 @@ def _remove_debut_race(df: pl.DataFrame) -> pl.DataFrame:
     return df
 
 
-def preprocess_train_data(data: RawData, config: Config) -> pl.DataFrame:
+def preprocess_train_data(
+    data: RawData,
+    config: Config,
+) -> tuple[
+    pl.DataFrame,
+    pl.DataFrame | None,
+    pl.DataFrame,
+    pl.DataFrame,
+    pl.DataFrame,
+]:
     select_cols = [
         pl.col("枠").cast(pl.Int32).alias("group"),
         pl.col("horse_number").cast(pl.Int32).alias("number"),
@@ -247,7 +256,8 @@ def main() -> None:
 
     out_data_dir = data_dir / now
     os.makedirs(out_data_dir, exist_ok=True)
-    weight_diff_avg_df.write_parquet(out_data_dir / "weight_diff_avg.parquet")
+    if weight_diff_avg_df is not None:
+        weight_diff_avg_df.write_parquet(out_data_dir / "weight_diff_avg.parquet")
     horse_target_encoded_df.write_parquet(out_data_dir / "horse_target_encoded.parquet")
     jockey_target_encoded_df.write_parquet(out_data_dir / "jockey_target_encoded.parquet")
     trainer_target_encoded_df.write_parquet(out_data_dir / "trainer_target_encoded.parquet")
