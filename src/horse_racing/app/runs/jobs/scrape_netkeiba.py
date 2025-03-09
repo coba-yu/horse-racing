@@ -10,7 +10,7 @@ from horse_racing.usecase.race_schedule import RaceScheduleUsecase
 class Argument:
     race_date: str = ""
 
-    def __post_init__(self) -> None:
+    def validate(self) -> None:
         if len(self.race_date) == 0:
             raise ValueError("race_date is required.")
 
@@ -21,6 +21,7 @@ def main() -> None:
 
     args, _ = parser.parse_known_args(namespace=Argument())
     logger.info(f"{args=}")
+    args.validate()
 
     driver = ChromeDriver()
     race_schedule_usecase = RaceScheduleUsecase(driver=driver)
