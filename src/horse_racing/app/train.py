@@ -1,5 +1,4 @@
 import os
-from argparse import ArgumentParser
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -7,15 +6,7 @@ from pathlib import Path
 import lightgbm as lgb
 import polars as pl
 
-from horse_racing.core.chrome import ChromeDriver
 from horse_racing.core.logging import logger
-from horse_racing.usecase.race_card import RaceCardUsecase
-
-
-@dataclass
-class Args:
-    dt: str = ""
-    race_id: str = ""
 
 
 @dataclass
@@ -215,17 +206,9 @@ def train_lgb(
 
 def main() -> None:
     # setup
-    parser = ArgumentParser()
-    parser.add_argument("--dt", type=str, required=True)
-    parser.add_argument("--race_id", type=str, required=True)
-    args = parser.parse_args(namespace=Args())
-
-    logger.info(f"args: {args}")
-
     config = Config()
     logger.info(f"config: {config}")
 
-    chrome_driver = ChromeDriver()
     root_dir = Path(__file__).parent.parent.parent.parent
     data_dir = Path(root_dir / "data" / "cache")
     model_dir = Path(root_dir / "model")
@@ -234,11 +217,10 @@ def main() -> None:
     raw_data = load_data(data_dir=data_dir)
     (
         train_data_df,
-        _,
-        # weight_diff_avg_df,
-        # horse_target_encoded_df,
-        # jockey_target_encoded_df,
-        # trainer_target_encoded_df,
+        weight_diff_avg_df,
+        horse_target_encoded_df,
+        jockey_target_encoded_df,
+        trainer_target_encoded_df,
     ) = preprocess_train_data(data=raw_data, config=config)
     logger.info(f"features: {train_data_df.columns}")
 
@@ -257,16 +239,18 @@ def main() -> None:
         config=config,
     )
 
-    # save model
+    # save
     now = datetime.now().strftime("%Y%m%d_%H%M%S")
     lgb_model_dir = model_dir / config.lgb_objective / now
     os.makedirs(lgb_model_dir, exist_ok=True)
     lgb_model.save_model(lgb_model_dir / "lgb_model.txt")
 
-    # get race info
-    race_card_usecase = RaceCardUsecase(driver=chrome_driver)
-    race_info = race_card_usecase.get_race_info(race_id=args.race_id)
-    logger.info(f"race_info: {race_info}")
+    out_data_dir = data_dir / now
+    os.makedirs(out_data_dir, exist_ok=True)
+    weight_diff_avg_df.write_parquet(out_data_dir / "weight_diff_avg.parquet")
+    horse_target_encoded_df.write_parquet(out_data_dir / "horse_target_encoded.parquet")
+    jockey_target_encoded_df.write_parquet(out_data_dir / "jockey_target_encoded.parquet")
+    trainer_target_encoded_df.write_parquet(out_data_dir / "trainer_target_encoded.parquet")
 
 
 if __name__ == "__main__":
