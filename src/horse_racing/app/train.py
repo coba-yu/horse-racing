@@ -220,6 +220,7 @@ def main() -> None:
 
     root_dir = Path(__file__).parent.parent.parent.parent
     data_dir = Path(root_dir / "data" / "cache")
+    processed_data_dir = Path(root_dir / "data" / "processed")
     model_dir = Path(root_dir / "model")
 
     # prepare train data
@@ -254,7 +255,7 @@ def main() -> None:
     os.makedirs(lgb_model_dir, exist_ok=True)
     lgb_model.save_model(lgb_model_dir / "lgb_model.txt")
 
-    out_data_dir = data_dir / now
+    out_data_dir = processed_data_dir / now
     os.makedirs(out_data_dir, exist_ok=True)
     if weight_diff_avg_df is not None:
         weight_diff_avg_df.write_parquet(out_data_dir / "weight_diff_avg.parquet")
