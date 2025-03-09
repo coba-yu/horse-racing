@@ -28,6 +28,8 @@ class RaceResultNetkeibaRepository:
 
         logger.info(f"Downloading {url} to {cache_path}")
         html = self.driver.get_page_source(url=url)
+
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
         with open(cache_path, "w") as f:
             f.write(html)
         return html
