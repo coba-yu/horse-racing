@@ -95,7 +95,7 @@ resource "google_cloud_run_v2_job" "scrape_netkeiba" {
   ]
 }
 
-resource "google_workflows_workflow" "report_v2_organization" {
+resource "google_workflows_workflow" "scrape_netkeiba" {
   name            = "scrape-netkeiba"
   region          = var.region
   service_account = "projects/${var.google_project}/serviceAccounts/${google_service_account.yukob_horse_racing_workflow.email}"

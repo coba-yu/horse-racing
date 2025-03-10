@@ -12,6 +12,8 @@ variable "gcp_iam_roles" {
     "roles/pubsub.editor",
     "roles/resourcemanager.projectIamAdmin",
     "roles/storage.admin",
+    # https://cloud.google.com/workflows/docs/access-control
+    "roles/workflows.editor",
   ]
 }
 
