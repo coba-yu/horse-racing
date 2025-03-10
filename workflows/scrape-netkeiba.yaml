@@ -1,18 +1,9 @@
 main:
-  params: []
+  params: [args]
   steps:
     - init:
         assign:
-          - race_dates:
-              - "20220501"
-              - "20220507"
-              - "20220508"
-              - "20220514"
-              - "20220515"
-              - "20220521"
-              - "20220522"
-              - "20220528"
-              - "20220529"
+          - race_dates: ${args.race_dates}
           - job_name: "scrape-netkeiba-job"
           # https://cloud.google.com/workflows/docs/reference/environment-variables
           - job_location: ${sys.get_env("GOOGLE_CLOUD_LOCATION")}
@@ -33,3 +24,7 @@ main:
                         args:
                           - --race-date
                           - ${race_date}
+                  connector_params:
+                    # max: 31536000 seconds (one year)
+                    # 60 * 60 * 24 = 86400 seconds (one day)
+                    timeout: 86400
