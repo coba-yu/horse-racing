@@ -13,8 +13,10 @@ main:
               - "20220522"
               - "20220528"
               - "20220529"
-          - job_location: "asia-northeast1"
           - job_name: "scrape-netkeiba-job"
+          # https://cloud.google.com/workflows/docs/reference/environment-variables
+          - job_location: ${sys.get_env("GOOGLE_CLOUD_LOCATION")}
+          - project_id: ${sys.get_env("GOOGLE_CLOUD_PROJECT_ID")}
     - scrape:
         for:
           value: race_date
