@@ -23,6 +23,14 @@ variable "gcp_iam_roles__yukob_horse_racing_job" {
   ]
 }
 
+variable "gcp_iam_roles__yukob_horse_racing_workflow" {
+  default = [
+    # https://cloud.google.com/run/docs/reference/iam/roles
+    "roles/run.developer",
+    "roles/iam.serviceAccountUser",
+  ]
+}
+
 variable "region" {
   default = "asia-northeast1"
 }

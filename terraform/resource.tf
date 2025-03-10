@@ -25,6 +25,19 @@ resource "google_project_iam_member" "yukob_horse_racing_job" {
   member   = "serviceAccount:${google_service_account.yukob_horse_racing_job.email}"
 }
 
+resource "google_service_account" "yukob_horse_racing_workflow" {
+  account_id                   = "yukob-horse-racing-workflow"
+  create_ignore_already_exists = true
+}
+
+resource "google_project_iam_member" "yukob_horse_racing_workflow" {
+  for_each   = toset(var.gcp_iam_roles__yukob_horse_racing_workflow)
+  project    = var.google_project
+  role       = each.value
+  member     = "serviceAccount:${google_service_account.yukob_horse_racing_workflow.email}"
+  depends_on = [google_service_account.yukob_horse_racing_workflow]
+}
+
 #==================#
 # data preparation #
 #==================#
@@ -79,6 +92,17 @@ resource "google_cloud_run_v2_job" "scrape_netkeiba" {
   }
   depends_on = [
     google_service_account.yukob_horse_racing_job,
+  ]
+}
+
+resource "google_workflows_workflow" "report_v2_organization" {
+  name            = "scrape-netkeiba"
+  region          = var.region
+  service_account = "projects/${var.google_project}/serviceAccounts/${google_service_account.yukob_horse_racing_workflow.email}"
+  source_contents = file("../workflows/scrape-netkeiba.yaml")
+  depends_on = [
+    google_service_account.yukob_horse_racing_workflow,
+    google_cloud_run_v2_job.scrape_netkeiba,
   ]
 }
 

@@ -1,0 +1,33 @@
+main:
+  params: []
+  steps:
+    - init:
+        assign:
+          - race_dates:
+              - "20220501"
+              - "20220507"
+              - "20220508"
+              - "20220514"
+              - "20220515"
+              - "20220521"
+              - "20220522"
+              - "20220528"
+              - "20220529"
+          - job_location: "asia-northeast1"
+          - job_name: "scrape-netkeiba-job"
+    - scrape:
+        for:
+          value: race_date
+          in: ${race_dates}
+          steps:
+            - run_job_per_race_date:
+                call: googleapis.run.v1.namespaces.jobs.run
+                args:
+                  name: ${"namespaces/" + project_id + "/jobs/" + job_name}
+                  location: ${job_location}
+                  body:
+                    overrides:
+                      containerOverrides:
+                        args:
+                          - --race-date
+                          - ${race_date}
