@@ -22,6 +22,28 @@ class Argument:
             raise ValueError("race_date is required.")
 
 
+def scrape_by_race_date(
+    driver: ChromeDriver,
+    storage_client: StorageClient,
+    race_date: str,
+) -> None:
+    with TemporaryDirectory() as tmp_dir:
+        result_repository = RaceResultNetkeibaRepository(
+            driver=driver,
+            storage_client=storage_client,
+            root_dir=Path(tmp_dir),
+        )
+        schedule_usecase = RaceScheduleUsecase(driver=driver)
+        result_usecase = RaceResultUsecase(race_result_repository=result_repository)
+
+        race_ids = schedule_usecase.get_race_ids(race_date=race_date)
+        logger.info(f"race_ids: {race_ids}")
+
+        for race_id in tqdm(race_ids, mininterval=60.0, maxinterval=180.0):
+            logger.info(f"race_id: {race_id}")
+            result_usecase.get(race_date=race_date, race_id=race_id)  # TODO: not yet used returned html
+
+
 def main() -> None:
     parser = ArgumentParser()
     parser.add_argument("--race-date", type=str)
@@ -33,22 +55,7 @@ def main() -> None:
     driver = ChromeDriver()
     storage_client = StorageClient()
 
-    with TemporaryDirectory() as tmp_dir:
-        result_repository = RaceResultNetkeibaRepository(
-            driver=driver,
-            storage_client=storage_client,
-            root_dir=Path(tmp_dir),
-        )
-        schedule_usecase = RaceScheduleUsecase(driver=driver)
-        result_usecase = RaceResultUsecase(race_result_repository=result_repository)
-
-        race_date = args.race_date
-        race_ids = schedule_usecase.get_race_ids(race_date=race_date)
-        logger.info(f"race_ids: {race_ids}")
-
-        for race_id in tqdm(race_ids, mininterval=60.0, maxinterval=180.0):
-            logger.info(f"race_id: {race_id}")
-            result_usecase.get(race_date=race_date, race_id=race_id)  # TODO: not yet used returned html
+    scrape_by_race_date(driver=driver, storage_client=storage_client, race_date=args.race_date)
 
 
 if __name__ == "__main__":
