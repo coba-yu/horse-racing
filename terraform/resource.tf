@@ -126,7 +126,7 @@ resource "google_workflows_workflow" "scrape_netkeiba" {
   source_contents = file("../workflows/scrape-netkeiba.yaml")
   depends_on = [
     google_service_account.yukob_horse_racing_workflow,
-    google_cloud_run_v2_job.scrape_netkeiba,
+    google_cloud_run_v2_job.scrape_netkeiba_job,
   ]
 }
 
