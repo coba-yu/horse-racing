@@ -71,30 +71,30 @@ resource "google_pubsub_topic" "horse_racing_data" {
 #   ]
 # }
 
-# resource "google_cloud_run_v2_job" "scrape_netkeiba_job" {
-#   name                = "scrape-netkeiba-job"
-#   location            = var.region
-#   deletion_protection = false
-#   template {
-#     template {
-#       containers {
-#         image   = "${var.region}-docker.pkg.dev/${var.google_project}/${var.gcp_artifact_repository_name}/${var.gcp_horse_racing_image_name}:latest"
-#         command = ["python3", "src/horse_racing/app/runs/jobs/scrape_netkeiba.py"]
-#         resources {
-#           limits = {
-#             cpu    = "1"
-#             memory = "2Gi"
-#           }
-#         }
-#       }
-#       service_account = "${google_service_account.yukob_horse_racing_job.account_id}@${var.google_project}.iam.gserviceaccount.com"
-#       timeout         = "21600s"
-#     }
-#   }
-#   depends_on = [
-#     google_service_account.yukob_horse_racing_job,
-#   ]
-# }
+resource "google_cloud_run_v2_job" "scrape_netkeiba_job" {
+  name                = "scrape-netkeiba-job"
+  location            = var.region
+  deletion_protection = false
+  template {
+    template {
+      containers {
+        image   = "${var.region}-docker.pkg.dev/${var.google_project}/${var.gcp_artifact_repository_name}/${var.gcp_horse_racing_image_name}:latest"
+        command = ["python3", "src/horse_racing/app/runs/jobs/scrape_netkeiba.py"]
+        resources {
+          limits = {
+            cpu    = "1"
+            memory = "2Gi"
+          }
+        }
+      }
+      service_account = "${google_service_account.yukob_horse_racing_job.account_id}@${var.google_project}.iam.gserviceaccount.com"
+      timeout         = "21600s"
+    }
+  }
+  depends_on = [
+    google_service_account.yukob_horse_racing_job,
+  ]
+}
 
 resource "google_cloud_run_v2_job" "scrape_netkeiba_job_race_dates" {
   name                = "scrape-netkeiba-job-race-dates"
