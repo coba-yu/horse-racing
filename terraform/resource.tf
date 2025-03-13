@@ -121,16 +121,17 @@ resource "google_cloud_run_v2_job" "scrape_netkeiba_job_race_dates" {
   ]
 }
 
-# resource "google_workflows_workflow" "scrape_netkeiba" {
-#   name            = "scrape-netkeiba"
-#   region          = var.region
-#   service_account = "projects/${var.google_project}/serviceAccounts/${google_service_account.yukob_horse_racing_workflow.email}"
-#   source_contents = file("../workflows/scrape-netkeiba.yaml")
-#   depends_on = [
-#     google_service_account.yukob_horse_racing_workflow,
-#     google_cloud_run_v2_job.scrape_netkeiba_job,
-#   ]
-# }
+resource "google_workflows_workflow" "scrape_netkeiba" {
+  name                = "scrape-netkeiba"
+  region              = var.region
+  deletion_protection = false
+  service_account     = "projects/${var.google_project}/serviceAccounts/${google_service_account.yukob_horse_racing_workflow.email}"
+  source_contents     = file("../workflows/scrape-netkeiba.yaml")
+  depends_on = [
+    google_service_account.yukob_horse_racing_workflow,
+    google_cloud_run_v2_job.scrape_netkeiba_job,
+  ]
+}
 
 # data "archive_file" "gcf_src_scheduled_pipeline" {
 #   type        = "zip"
