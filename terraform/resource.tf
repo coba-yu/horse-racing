@@ -72,8 +72,9 @@ resource "google_pubsub_topic" "horse_racing_data" {
 # }
 
 resource "google_cloud_run_v2_job" "scrape_netkeiba_job" {
-  location = var.region
-  name     = "scrape-netkeiba-job"
+  name                = "scrape-netkeiba-job"
+  location            = var.region
+  deletion_protection = false
   template {
     template {
       containers {
@@ -96,8 +97,9 @@ resource "google_cloud_run_v2_job" "scrape_netkeiba_job" {
 }
 
 resource "google_cloud_run_v2_job" "scrape_netkeiba_job_race_dates" {
-  location = var.region
-  name     = "scrape-netkeiba-job-race-dates"
+  name                = "scrape-netkeiba-job-race-dates"
+  location            = var.region
+  deletion_protection = false
   template {
     template {
       containers {
