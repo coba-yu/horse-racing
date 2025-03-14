@@ -48,6 +48,12 @@ resource "google_storage_bucket" "netkeiba_htmls" {
   force_destroy = false
 }
 
+resource "google_storage_bucket" "netkeiba_data" {
+  name          = "yukob-netkeiba-data"
+  location      = var.region
+  force_destroy = false
+}
+
 resource "google_pubsub_topic" "horse_racing_data" {
   name       = "horse-racing-data"
   depends_on = [google_project_iam_member.gcp_iam_member]
@@ -93,6 +99,8 @@ resource "google_cloud_run_v2_job" "scrape_netkeiba_job" {
   }
   depends_on = [
     google_service_account.yukob_horse_racing_job,
+    google_storage_bucket.netkeiba_data,
+    google_storage_bucket.netkeiba_htmls,
   ]
 }
 
@@ -143,6 +151,8 @@ resource "google_cloud_run_v2_job" "train_lgb_job" {
   }
   depends_on = [
     google_service_account.yukob_horse_racing_job,
+    google_storage_bucket.netkeiba_data,
+    google_storage_bucket.netkeiba_htmls,
   ]
 }
 
