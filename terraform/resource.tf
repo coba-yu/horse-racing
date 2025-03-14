@@ -121,6 +121,31 @@ resource "google_cloud_run_v2_job" "scrape_netkeiba_job_race_dates" {
   ]
 }
 
+resource "google_cloud_run_v2_job" "train_lgb_job" {
+  name                = "train-lgb-job"
+  location            = var.region
+  deletion_protection = false
+  template {
+    template {
+      containers {
+        image   = "${var.region}-docker.pkg.dev/${var.google_project}/${var.gcp_artifact_repository_name}/${var.gcp_horse_racing_image_name}:latest"
+        command = ["python3", "src/horse_racing/app/runs/jobs/train_lgb.py"]
+        resources {
+          limits = {
+            cpu    = "4"
+            memory = "2Gi"
+          }
+        }
+      }
+      service_account = "${google_service_account.yukob_horse_racing_job.account_id}@${var.google_project}.iam.gserviceaccount.com"
+      timeout         = "7200s"
+    }
+  }
+  depends_on = [
+    google_service_account.yukob_horse_racing_job,
+  ]
+}
+
 resource "google_workflows_workflow" "scrape_netkeiba" {
   name                = "scrape-netkeiba"
   region              = var.region
