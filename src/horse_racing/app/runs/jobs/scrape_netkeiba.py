@@ -34,14 +34,14 @@ def scrape_by_race_date(
             root_dir=Path(tmp_dir),
         )
         schedule_usecase = RaceScheduleUsecase(driver=driver)
-        result_usecase = RaceResultUsecase(race_result_repository=result_repository)
+        result_usecase = RaceResultUsecase(race_result_repository=result_repository, root_dir=Path(tmp_dir))
 
         race_ids = schedule_usecase.get_race_ids(race_date=race_date)
         logger.info(f"race_ids: {race_ids}")
 
         for race_id in tqdm(race_ids, mininterval=60.0, maxinterval=180.0):
             logger.info(f"race_id: {race_id}")
-            result_usecase.get(race_date=race_date, race_id=race_id)  # TODO: not yet used returned html
+            result_usecase.get_raw_html(race_date=race_date, race_id=race_id)  # Tnot used returned html
 
 
 def main() -> None:
