@@ -77,7 +77,11 @@ class RaceResultNetkeibaRepository:
 
         return self._download_from_netkeiba(race_date=race_date, race_id=race_id)
 
-    def get_iter(self) -> Generator[dict[str, str], Any, None]:
+    def get_iter(
+        self,
+        first_date: str | None = None,
+        last_date: str | None = None,
+    ) -> Generator[dict[str, str], Any, None]:
         for blob in self._html_bucket.list_blobs(prefix="race_result"):
             # race_result/race_date={race_date}/{race_id}.html
             blob_name = blob.name
@@ -88,6 +92,11 @@ class RaceResultNetkeibaRepository:
                 logger.warning(f"Unmatch race_date pattern: {blob_name}")
                 continue
             race_date = race_date_match.group().replace("race_date=", "")
+
+            if first_date is not None and race_date < first_date:
+                continue
+            if last_date is not None and race_date > last_date:
+                continue
 
             # extract race_id
             race_id, _ = os.path.splitext(os.path.basename(blob.name))

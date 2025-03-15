@@ -3,6 +3,7 @@ from pathlib import Path
 
 import pandas as pd
 import polars as pl
+from tqdm import tqdm
 
 from horse_racing.infrastructure.netkeiba.race_result import RaceResultNetkeibaRepository
 
@@ -38,7 +39,7 @@ class RaceResultUsecase:
     def get_raw_html(self, race_date: str, race_id: str) -> str:
         return self.race_result_repository.get_by_race_id(race_date=race_date, race_id=race_id)
 
-    def get(self, version: str) -> pl.DataFrame:
+    def get(self, version: str, first_date: str | None = None, last_date: str | None = None) -> pl.DataFrame:
         data_dir = Path(self.root_dir, "data")
         data_dir.mkdir(parents=True, exist_ok=True)
 
@@ -48,7 +49,7 @@ class RaceResultUsecase:
             )
             return pl.read_parquet(result_path)
 
-        for data in self.race_result_repository.get_iter():
+        for data in tqdm(self.race_result_repository.get_iter(first_date=first_date, last_date=last_date)):
             sub_dir = f'race_date={data["race_date"]}'
 
             table_pdf_list = pd.read_html(
