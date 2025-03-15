@@ -1,5 +1,6 @@
 from io import StringIO
 from pathlib import Path
+from traceback import format_exc
 
 import pandas as pd
 import polars as pl
@@ -56,7 +57,8 @@ class RaceResultUsecase:
             maxinterval=180.0,
         ):
             race_id = data["race_id"]
-            sub_dir = f'race_date={data["race_date"]}'
+            race_date = data["race_date"]
+            sub_dir = f"race_date={race_date}"
 
             try:
                 table_pdf_list = pd.read_html(
@@ -71,8 +73,7 @@ class RaceResultUsecase:
                 result_dir.mkdir(parents=True, exist_ok=True)
                 result_df.write_parquet(result_dir / f"{race_id}.parquet")
             except ValueError:
-                logger.error(f"Error: {race_id=}")
-                raise
+                logger.error(f"Error: {race_id=}, {race_date=}\n{format_exc()}")
         df = pl.read_parquet(data_dir)
 
         # cache to storage
