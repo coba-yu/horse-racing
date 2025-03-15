@@ -5,6 +5,7 @@ import pandas as pd
 import polars as pl
 from tqdm import tqdm
 
+from horse_racing.core.logging import logger
 from horse_racing.infrastructure.netkeiba.race_result import RaceResultNetkeibaRepository
 
 # raw -> renamed
@@ -50,19 +51,24 @@ class RaceResultUsecase:
             return pl.read_parquet(result_path)
 
         for data in tqdm(self.race_result_repository.get_iter(first_date=first_date, last_date=last_date)):
+            race_id = data["race_id"]
             sub_dir = f'race_date={data["race_date"]}'
 
-            table_pdf_list = pd.read_html(
-                StringIO(data["html"]),
-                converters={c: str for c, _ in _RESULT_COLUMN_RENAME_DICT.items()},
-            )
+            try:
+                table_pdf_list = pd.read_html(
+                    StringIO(data["html"]),
+                    converters={c: str for c, _ in _RESULT_COLUMN_RENAME_DICT.items()},
+                )
 
-            result_df = pl.from_pandas(table_pdf_list[0])
-            result_df = result_df.rename(_RESULT_COLUMN_RENAME_DICT)
+                result_df = pl.from_pandas(table_pdf_list[0])
+                result_df = result_df.rename(_RESULT_COLUMN_RENAME_DICT)
 
-            result_dir = data_dir / "race_results" / sub_dir
-            result_dir.mkdir(parents=True, exist_ok=True)
-            result_df.write_parquet(result_dir / f'{data["race_id"]}.parquet')
+                result_dir = data_dir / "race_results" / sub_dir
+                result_dir.mkdir(parents=True, exist_ok=True)
+                result_df.write_parquet(result_dir / f"{race_id}.parquet")
+            except ValueError:
+                logger.error(f"Error: {race_id=}")
+                raise
         df = pl.read_parquet(data_dir)
 
         # cache to storage
