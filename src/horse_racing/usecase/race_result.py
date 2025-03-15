@@ -50,7 +50,11 @@ class RaceResultUsecase:
             )
             return pl.read_parquet(result_path)
 
-        for data in tqdm(self.race_result_repository.get_iter(first_date=first_date, last_date=last_date)):
+        for data in tqdm(
+            self.race_result_repository.get_iter(first_date=first_date, last_date=last_date),
+            mininterval=60.0,
+            maxinterval=180.0,
+        ):
             race_id = data["race_id"]
             sub_dir = f'race_date={data["race_date"]}'
 
