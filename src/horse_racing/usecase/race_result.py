@@ -23,6 +23,8 @@ class Column:
     AGE: str = "age"
     TOTAL_WEIGHT: str = "total_weight"
     HORSE_WEIGHT: str = "horse_weight"
+    HORSE_WEIGHT_DIFF: str = "horse_weight_diff"
+    HORSE_WEIGHT_DIFF_DEV: str = "horse_weight_diff_dev"
     GOAL_TIME: str = "goal_time"
     GOAL_DIFF: str = "goal_diff"
     POPULAR: str = "popular"
@@ -49,6 +51,8 @@ class Column:
     TRAINER_ID: str = "trainer_id"
 
     # not feature
+    RACE_ID: str = "race_id"
+    RACE_DATE: str = "race_date"
     HORSE_NAME: str = "horse_name"
     JOCKEY_NAME: str = "jockey_name"
     TRAINER_NAME: str = "trainer_name"
