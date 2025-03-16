@@ -24,3 +24,14 @@ execute_job_scrape_netkeiba_race_dates:
 	gcloud run jobs execute scrape-netkeiba-job-race-dates \
 		--args="--year,$(YEAR),--month,$(MONTH)" \
 		--region=$(REGION)
+
+# Required:
+#  - TRAIN_FIRST_DATE: e.g. 20240101
+#  - TRAIN_LAST_DATE: e.g. 20241031
+#  - VALID_LAST_DATE: e.g. 20250301
+#  - DATA_VERSION: e.g. 20250315_100000
+.PHONY: execute_job_train_lgb
+execute_job_train_lgb:
+	gcloud run jobs execute train-lgb-job \
+		--args="--train-first-date,$(TRAIN_FIRST_DATE),--train-last-date,$(TRAIN_LAST_DATE),--valid-last-date,$(VALID_LAST_DATE),--data-version,$(DATA_VERSION)" \
+		--region=$(REGION)

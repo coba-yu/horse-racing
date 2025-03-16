@@ -15,7 +15,7 @@ from horse_racing.core.logging import logger
 from horse_racing.infrastructure.netkeiba.race_result import RaceResultNetkeibaRepository
 
 
-class Column:
+class ResultColumn:
     RANK: str = "rank"
     FRAME: str = "frame"
     HORSE_NUMBER: str = "horse_number"
@@ -58,25 +58,25 @@ class Column:
     TRAINER_NAME: str = "trainer_name"
 
 
-GENDER_AGE_COLUMN = f"{Column.GENDER}_{Column.AGE}"
+GENDER_AGE_COLUMN = f"{ResultColumn.GENDER}_{ResultColumn.AGE}"
 HORSE_WEIGHT_AND_DIFF_COLUMN = "horse_weight_and_diff"
 
 # raw -> renamed
 _RESULT_COLUMN_RENAME_DICT = {
-    "着 順": Column.RANK,
-    "枠": Column.FRAME,
-    "馬 番": Column.HORSE_NUMBER,
-    "馬名": Column.HORSE_NAME,
+    "着 順": ResultColumn.RANK,
+    "枠": ResultColumn.FRAME,
+    "馬 番": ResultColumn.HORSE_NUMBER,
+    "馬名": ResultColumn.HORSE_NAME,
     "性齢": GENDER_AGE_COLUMN,
-    "斤量": Column.TOTAL_WEIGHT,
-    "騎手": Column.JOCKEY_NAME,
-    "タイム": Column.GOAL_TIME,
-    "着差": Column.GOAL_DIFF,
-    "人 気": Column.POPULAR,
-    "単勝 オッズ": Column.ODDS,
-    "後3F": Column.LAST_3F_TIME,
-    "コーナー 通過順": Column.CORNER_RANK,
-    "厩舎": Column.TRAINER_NAME,
+    "斤量": ResultColumn.TOTAL_WEIGHT,
+    "騎手": ResultColumn.JOCKEY_NAME,
+    "タイム": ResultColumn.GOAL_TIME,
+    "着差": ResultColumn.GOAL_DIFF,
+    "人 気": ResultColumn.POPULAR,
+    "単勝 オッズ": ResultColumn.ODDS,
+    "後3F": ResultColumn.LAST_3F_TIME,
+    "コーナー 通過順": ResultColumn.CORNER_RANK,
+    "厩舎": ResultColumn.TRAINER_NAME,
     "馬体重 (増減)": HORSE_WEIGHT_AND_DIFF_COLUMN,
 }
 
@@ -88,16 +88,16 @@ def extract_race_info(soup: BeautifulSoup) -> dict[str, Any]:
     race_list_name_box = soup.find("div", class_="RaceList_NameBox")
     race_num_tag = race_list_name_box.select_one(".RaceList_Item01 .RaceNum")
     if race_num_tag is None:
-        race_info[Column.RACE_NUMBER] = None
+        race_info[ResultColumn.RACE_NUMBER] = None
     else:
-        race_info[Column.RACE_NUMBER] = race_num_tag.get_text(strip=True)
+        race_info[ResultColumn.RACE_NUMBER] = race_num_tag.get_text(strip=True)
 
     # => "3歳未勝利"
     race_name_tag = race_list_name_box.select_one(".RaceList_Item02 .RaceName")
     if race_num_tag is None:
-        race_info[Column.RACE_NAME] = None
+        race_info[ResultColumn.RACE_NAME] = None
     else:
-        race_info[Column.RACE_NAME] = race_name_tag.get_text(strip=True)
+        race_info[ResultColumn.RACE_NAME] = race_name_tag.get_text(strip=True)
 
     # => "10:10発走 / ダ1400m (左) / 天候:晴 / 馬場:良"
     race_data_1_tag = race_list_name_box.select_one(".RaceList_Item02 .RaceData01")
@@ -106,7 +106,9 @@ def extract_race_info(soup: BeautifulSoup) -> dict[str, Any]:
     else:
         race_info_texts = re.sub(r"\s+", "", race_data_1_tag.get_text(strip=True)).split("/")
 
-    for i, k in enumerate((Column.START_AT, Column.DISTANCE, Column.WEATHER, Column.FIELD_CONDITION)):
+    for i, k in enumerate(
+        (ResultColumn.START_AT, ResultColumn.DISTANCE, ResultColumn.WEATHER, ResultColumn.FIELD_CONDITION)
+    ):
         if len(race_info_texts) >= i + 1:
             race_info[k] = race_info_texts[i]
         else:
@@ -160,6 +162,27 @@ def _extracted_id_df(tag: Tag, href_key: str, id_column_prefix: str, name_column
     return df
 
 
+def extract_id_columns(df: pl.DataFrame, soup: BeautifulSoup) -> pl.DataFrame:
+    table = soup.find("table", class_="RaceTable01")
+    for href_key, id_column_prefix, name_column in (
+        ("horse", "horse", ResultColumn.HORSE_NAME),
+        ("jockey/result/recent", "jockey", ResultColumn.JOCKEY_NAME),
+        ("trainer/result/recent", "trainer", ResultColumn.TRAINER_NAME),
+    ):
+        id_df = _extracted_id_df(
+            table,
+            href_key=href_key,
+            id_column_prefix=id_column_prefix,
+            name_column=name_column,
+        )
+        id_df = _remove_whitespace(id_df, column=name_column)
+
+        df = _remove_whitespace(df, column=name_column)
+        df = df.join(id_df, on=name_column, how="left")
+
+    return df
+
+
 def extract_payout_df(soup: BeautifulSoup) -> pl.DataFrame:
     payout_pdfs = []
     for t in soup.find_all("table", class_="Payout_Detail_Table"):
@@ -180,17 +203,17 @@ def extract_payout_df(soup: BeautifulSoup) -> pl.DataFrame:
     win_column = "単勝"
     win_payout_df = payout_df.filter(pl.col("ticket_type") == win_column).explode(["horse_numbers", "payouts"])
     win_payout_df = win_payout_df.select(
-        pl.col("horse_numbers").alias(Column.HORSE_NUMBER),
+        pl.col("horse_numbers").alias(ResultColumn.HORSE_NUMBER),
         pl.col("payouts").cast(pl.Int32).alias("win_payout"),
     )
 
     place_column = "複勝"
     place_payout_df = payout_df.filter(pl.col("ticket_type") == place_column).explode(["horse_numbers", "payouts"])
     place_payout_df = place_payout_df.select(
-        pl.col("horse_numbers").alias(Column.HORSE_NUMBER),
+        pl.col("horse_numbers").alias(ResultColumn.HORSE_NUMBER),
         pl.col("payouts").cast(pl.Int32).alias("place_payout"),
     )
-    return win_payout_df.join(place_payout_df, on=Column.HORSE_NUMBER, how="outer")
+    return win_payout_df.join(place_payout_df, on=ResultColumn.HORSE_NUMBER, how="outer")
 
 
 def convert_html_to_dataframe(html: str, race_date: str, race_id: str) -> pl.DataFrame:
@@ -210,27 +233,12 @@ def convert_html_to_dataframe(html: str, race_date: str, race_id: str) -> pl.Dat
     df = df.with_columns([pl.lit(v).alias(k) for k, v in race_info.items()])
 
     # horse / jockey / trainer id
-    table = soup.find("table", class_="RaceTable01")
-    for href_key, id_column_prefix, name_column in (
-        ("horse", "horse", Column.HORSE_NAME),
-        ("jockey/result/recent", "jockey", Column.JOCKEY_NAME),
-        ("trainer/result/recent", "trainer", Column.TRAINER_NAME),
-    ):
-        id_df = _extracted_id_df(
-            table,
-            href_key=href_key,
-            id_column_prefix=id_column_prefix,
-            name_column=name_column,
-        )
-        id_df = _remove_whitespace(id_df, column=name_column)
-
-        df = _remove_whitespace(df, column=name_column)
-        df = df.join(id_df, on=name_column, how="left")
+    df = extract_id_columns(df=df, soup=soup)
 
     # payout
     suffix = "_right"
-    df = df.join(extract_payout_df(soup=soup), on=Column.HORSE_NUMBER, how="left", suffix=suffix)
-    df = df.drop(f"{Column.HORSE_NUMBER}{suffix}")
+    df = df.join(extract_payout_df(soup=soup), on=ResultColumn.HORSE_NUMBER, how="left", suffix=suffix)
+    df = df.drop(f"{ResultColumn.HORSE_NUMBER}{suffix}")
 
     return df
 

@@ -15,9 +15,10 @@ class ChromeDriver:
 
         self._sleep_seconds = sleep_seconds
 
-    def get_page_source(self, url: str) -> str:
+    def get_page_source(self, url: str, skip_sleep: bool = False) -> str:
         self._options.add_argument(f"--user-agent={random_choice_user_agent()}")
         with Chrome(options=self._options) as driver:
             driver.get(url=url)
-            sleep(self._sleep_seconds)
+            if not skip_sleep:
+                sleep(self._sleep_seconds)
             return str(driver.page_source)
