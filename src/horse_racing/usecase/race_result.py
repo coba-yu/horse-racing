@@ -120,7 +120,7 @@ class RaceResultUsecase:
             try:
                 result_df = convert_html_to_dataframe(html=data["html"], race_date=race_date, race_id=race_id)
 
-                result_dir = data_dir / "race_results" / sub_dir
+                result_dir = data_dir / "race_result" / sub_dir
                 result_dir.mkdir(parents=True, exist_ok=True)
                 result_df.write_parquet(result_dir / f"{race_id}.parquet")
             except ValueError:
