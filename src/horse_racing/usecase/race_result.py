@@ -114,7 +114,8 @@ def _extracted_id_df(tag: Tag, href_key: str, id_column_prefix: str, name_column
         },
     )
     if len(label_values) > 0:
-        df = df.with_columns({f"{id_column_prefix}_label": label_values})
+        df = df.with_columns(tmp_label=label_values)
+        df = df.rename({"tmp_label": f"{id_column_prefix}_label"})
 
     return df
 
