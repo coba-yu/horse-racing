@@ -7,28 +7,36 @@ from typing import Any
 import pandas as pd
 import polars as pl
 from bs4 import BeautifulSoup
+from bs4.element import Tag
 from tqdm import tqdm
 
 from horse_racing.core.html import get_soup
 from horse_racing.core.logging import logger
 from horse_racing.infrastructure.netkeiba.race_result import RaceResultNetkeibaRepository
 
+
+class Column:
+    HORSE_NAME: str = "horse_name"
+    JOCKEY_NAME: str = "jockey_name"
+    TRAINER_NAME: str = "trainer_name"
+
+
 # raw -> renamed
 _RESULT_COLUMN_RENAME_DICT = {
     "着 順": "rank",
     "枠": "frame",
     "馬 番": "horse_number",
-    "馬名": "horse_name",
+    "馬名": Column.HORSE_NAME,
     "性齢": "gender_age",
     "斤量": "total_weight",
-    "騎手": "jockey_name",
+    "騎手": Column.JOCKEY_NAME,
     "タイム": "goal_time",
     "着差": "goal_diff",
     "人 気": "popular",
     "単勝 オッズ": "odds",
     "後3F": "last_3f_time",
     "コーナー 通過順": "corner_rank",
-    "厩舎": "trainer_name",
+    "厩舎": Column.TRAINER_NAME,
     "馬体重 (増減)": "horse_weight_and_diff",
 }
 
@@ -67,6 +75,50 @@ def extract_race_info(soup: BeautifulSoup) -> dict[str, Any]:
     return dict(**race_info)
 
 
+def _remove_whitespace(df: pl.DataFrame, column: str) -> pl.DataFrame:
+    df = df.with_columns(pl.col(column).str.replace(r"^\s+", "").alias(column))
+    return df.with_columns(pl.col(column).str.replace(r"\s+$", "").alias(column))
+
+
+def _extracted_id_df(tag: Tag, href_key: str, id_column_prefix: str, name_column: str) -> pl.DataFrame:
+    a_list = tag.find_all("a", href=re.compile(rf"{href_key}/[\d\w]+"))
+    name_values: list[str | None] = []
+    id_values: list[str | None] = []
+    label_values: list[str | None] = []
+    for a in a_list:
+        name = a.text
+        if id_column_prefix == "trainer":
+            # e.g.
+            # <span class="Label1">美浦</span>
+            # <a href="https://db.netkeiba.com/trainer/result/recent/01169/" target="_blank" title="加藤士">加藤士</a>
+            label = a.parent.find("span").text
+            label_values.append(label)
+            name = "".join((label, name))
+        name_values.append(name)
+
+        href = a.get("href")
+        if href is None:
+            id_values.append(None)
+            continue
+
+        ids = re.findall(rf"{href_key}/([\d\w]+)", href)
+        if ids is None or len(ids) < 1:
+            id_values.append(None)
+            continue
+        id_values.append(ids[0])
+
+    df = pl.DataFrame(
+        {
+            name_column: name_values,
+            f"{id_column_prefix}_id": id_values,
+        },
+    )
+    if len(label_values) > 0:
+        df = df.with_columns({f"{id_column_prefix}_label": label_values})
+
+    return df
+
+
 def convert_html_to_dataframe(html: str, race_date: str, race_id: str) -> pl.DataFrame:
     # base dataframe
     table_pdf_list = pd.read_html(
@@ -82,6 +134,24 @@ def convert_html_to_dataframe(html: str, race_date: str, race_id: str) -> pl.Dat
     soup = get_soup(html)
     race_info = extract_race_info(soup=soup)
     df = df.with_columns([pl.lit(v).alias(k) for k, v in race_info.items()])
+
+    # horse / jockey / trainer id
+    table = soup.find("table", class_="RaceTable01")
+    for href_key, id_column_prefix, name_column in (
+        ("horse", "horse", Column.HORSE_NAME),
+        ("jockey/result/recent", "jockey", Column.JOCKEY_NAME),
+        ("trainer/result/recent", "trainer", Column.TRAINER_NAME),
+    ):
+        id_df = _extracted_id_df(
+            table,
+            href_key=href_key,
+            id_column_prefix=id_column_prefix,
+            name_column=name_column,
+        )
+        id_df = _remove_whitespace(id_df, column=name_column)
+
+        df = _remove_whitespace(df, column=name_column)
+        df = df.join(id_df, on=name_column, how="left")
 
     return df
 
