@@ -16,6 +16,7 @@ from horse_racing.infrastructure.netkeiba.race_result import RaceResultNetkeibaR
 
 
 class Column:
+    HORSE_NUMBER: str = "horse_number"
     HORSE_NAME: str = "horse_name"
     JOCKEY_NAME: str = "jockey_name"
     TRAINER_NAME: str = "trainer_name"
@@ -25,7 +26,7 @@ class Column:
 _RESULT_COLUMN_RENAME_DICT = {
     "着 順": "rank",
     "枠": "frame",
-    "馬 番": "horse_number",
+    "馬 番": Column.HORSE_NUMBER,
     "馬名": Column.HORSE_NAME,
     "性齢": "gender_age",
     "斤量": "total_weight",
@@ -120,6 +121,39 @@ def _extracted_id_df(tag: Tag, href_key: str, id_column_prefix: str, name_column
     return df
 
 
+def extract_payout_df(soup: BeautifulSoup) -> pl.DataFrame:
+    payout_pdfs = []
+    for t in soup.find_all("table", class_="Payout_Detail_Table"):
+        pdf_list = pd.read_html(StringIO(str(t)))
+        if len(pdf_list) <= 0:
+            continue
+        pdf = pdf_list[0]
+        pdf.columns = ["ticket_type", "horse_numbers", "payouts", "populars"]
+        payout_pdfs.append(pl.from_pandas(pdf))
+
+    payout_df = pl.concat(payout_pdfs, how="vertical")
+    payout_df = payout_df.drop("populars")
+    payout_df = payout_df.with_columns(
+        pl.col("horse_numbers").str.split(" "),
+        pl.col("payouts").str.replace_all(",", "").str.replace_all("円", "").str.extract_all(r"[0-9]+"),
+    )
+
+    win_column = "単勝"
+    win_payout_df = payout_df.filter(pl.col("ticket_type") == win_column).explode(["horse_numbers", "payouts"])
+    win_payout_df = win_payout_df.select(
+        pl.col("horse_numbers").alias(Column.HORSE_NUMBER),
+        pl.col("payouts").cast(pl.Int32).alias("win_payout"),
+    )
+
+    place_column = "複勝"
+    place_payout_df = payout_df.filter(pl.col("ticket_type") == place_column).explode(["horse_numbers", "payouts"])
+    place_payout_df = place_payout_df.select(
+        pl.col("horse_numbers").alias(Column.HORSE_NUMBER),
+        pl.col("payouts").cast(pl.Int32).alias("place_payout"),
+    )
+    return win_payout_df.join(place_payout_df, on=Column.HORSE_NUMBER, how="outer")
+
+
 def convert_html_to_dataframe(html: str, race_date: str, race_id: str) -> pl.DataFrame:
     # base dataframe
     table_pdf_list = pd.read_html(
@@ -153,6 +187,11 @@ def convert_html_to_dataframe(html: str, race_date: str, race_id: str) -> pl.Dat
 
         df = _remove_whitespace(df, column=name_column)
         df = df.join(id_df, on=name_column, how="left")
+
+    # payout
+    suffix = "_right"
+    df = df.join(extract_payout_df(soup=soup), on=Column.HORSE_NUMBER, how="left", suffix=suffix)
+    df = df.drop(f"{Column.HORSE_NUMBER}{suffix}")
 
     return df
 
