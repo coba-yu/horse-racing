@@ -16,29 +16,64 @@ from horse_racing.infrastructure.netkeiba.race_result import RaceResultNetkeibaR
 
 
 class Column:
+    RANK: str = "rank"
+    FRAME: str = "frame"
     HORSE_NUMBER: str = "horse_number"
+    GENDER: str = "gender"
+    AGE: str = "age"
+    TOTAL_WEIGHT: str = "total_weight"
+    HORSE_WEIGHT: str = "horse_weight"
+    GOAL_TIME: str = "goal_time"
+    GOAL_DIFF: str = "goal_diff"
+    POPULAR: str = "popular"
+    ODDS: str = "odds"
+    LAST_3F_TIME: str = "last_3f_time"
+    CORNER_RANK: str = "corner_rank"
+
+    # race info
+    RACE_NUMBER: str = "race_number"
+    RACE_NAME: str = "race_name"
+    START_AT: str = "start_at"
+    DISTANCE: str = "distance"
+    ROTATE: str = "rotate"
+    FIELD_TYPE: str = "field_type"
+    WEATHER: str = "weather"
+    FIELD_CONDITION: str = "field_condition"
+
+    WIN_PAYOUT: str = "win_payout"
+    PLACE_PAYOUT: str = "place_payout"
+
+    # id
+    HORSE_ID: str = "horse_id"
+    JOCKEY_ID: str = "jockey_id"
+    TRAINER_ID: str = "trainer_id"
+
+    # not feature
     HORSE_NAME: str = "horse_name"
     JOCKEY_NAME: str = "jockey_name"
     TRAINER_NAME: str = "trainer_name"
 
 
+GENDER_AGE_COLUMN = f"{Column.GENDER}_{Column.AGE}"
+HORSE_WEIGHT_AND_DIFF_COLUMN = "horse_weight_and_diff"
+
 # raw -> renamed
 _RESULT_COLUMN_RENAME_DICT = {
-    "着 順": "rank",
-    "枠": "frame",
+    "着 順": Column.RANK,
+    "枠": Column.FRAME,
     "馬 番": Column.HORSE_NUMBER,
     "馬名": Column.HORSE_NAME,
-    "性齢": "gender_age",
-    "斤量": "total_weight",
+    "性齢": GENDER_AGE_COLUMN,
+    "斤量": Column.TOTAL_WEIGHT,
     "騎手": Column.JOCKEY_NAME,
-    "タイム": "goal_time",
-    "着差": "goal_diff",
-    "人 気": "popular",
-    "単勝 オッズ": "odds",
-    "後3F": "last_3f_time",
-    "コーナー 通過順": "corner_rank",
+    "タイム": Column.GOAL_TIME,
+    "着差": Column.GOAL_DIFF,
+    "人 気": Column.POPULAR,
+    "単勝 オッズ": Column.ODDS,
+    "後3F": Column.LAST_3F_TIME,
+    "コーナー 通過順": Column.CORNER_RANK,
     "厩舎": Column.TRAINER_NAME,
-    "馬体重 (増減)": "horse_weight_and_diff",
+    "馬体重 (増減)": HORSE_WEIGHT_AND_DIFF_COLUMN,
 }
 
 
@@ -49,16 +84,16 @@ def extract_race_info(soup: BeautifulSoup) -> dict[str, Any]:
     race_list_name_box = soup.find("div", class_="RaceList_NameBox")
     race_num_tag = race_list_name_box.select_one(".RaceList_Item01 .RaceNum")
     if race_num_tag is None:
-        race_info["race_number"] = None
+        race_info[Column.RACE_NUMBER] = None
     else:
-        race_info["race_number"] = race_num_tag.get_text(strip=True)
+        race_info[Column.RACE_NUMBER] = race_num_tag.get_text(strip=True)
 
     # => "3歳未勝利"
     race_name_tag = race_list_name_box.select_one(".RaceList_Item02 .RaceName")
     if race_num_tag is None:
-        race_info["race_name"] = None
+        race_info[Column.RACE_NAME] = None
     else:
-        race_info["race_name"] = race_name_tag.get_text(strip=True)
+        race_info[Column.RACE_NAME] = race_name_tag.get_text(strip=True)
 
     # => "10:10発走 / ダ1400m (左) / 天候:晴 / 馬場:良"
     race_data_1_tag = race_list_name_box.select_one(".RaceList_Item02 .RaceData01")
@@ -67,7 +102,7 @@ def extract_race_info(soup: BeautifulSoup) -> dict[str, Any]:
     else:
         race_info_texts = re.sub(r"\s+", "", race_data_1_tag.get_text(strip=True)).split("/")
 
-    for i, k in enumerate(("start_at", "distance", "weather", "field_condition")):
+    for i, k in enumerate((Column.START_AT, Column.DISTANCE, Column.WEATHER, Column.FIELD_CONDITION)):
         if len(race_info_texts) >= i + 1:
             race_info[k] = race_info_texts[i]
         else:
@@ -115,7 +150,7 @@ def _extracted_id_df(tag: Tag, href_key: str, id_column_prefix: str, name_column
         },
     )
     if len(label_values) > 0:
-        df = df.with_columns(tmp_label=label_values)
+        df = df.with_columns(tmp_label=pl.Series(label_values))
         df = df.rename({"tmp_label": f"{id_column_prefix}_label"})
 
     return df
