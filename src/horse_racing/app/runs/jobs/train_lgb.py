@@ -3,13 +3,19 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from typing import Literal
 
 import polars as pl
 
 from horse_racing.core.gcp.storage import StorageClient
 from horse_racing.core.logging import logger
 from horse_racing.infrastructure.netkeiba.race_result import RaceResultNetkeibaRepository
-from horse_racing.usecase.race_result import RaceResultUsecase, Column, GENDER_AGE_COLUMN, HORSE_WEIGHT_AND_DIFF_COLUMN
+from horse_racing.usecase.race_result import (
+    RaceResultUsecase,
+    ResultColumn,
+    GENDER_AGE_COLUMN,
+    HORSE_WEIGHT_AND_DIFF_COLUMN,
+)
 
 
 @dataclass
@@ -53,69 +59,103 @@ def _remove_debut_race(df: pl.DataFrame) -> pl.DataFrame:
     return df
 
 
-def preprocess(raw_df: pl.DataFrame) -> pl.DataFrame:
-    # filter race
-    df = raw_df.filter(~pl.col(Column.RANK).is_in({"中止", "除外", "取消"}))
-    df = _remove_debut_race(df)
+def preprocess(
+    raw_df: pl.DataFrame,
+    weight_diff_avg_df: pl.DataFrame | None = None,
+    mode: Literal["train", "predict"] = "train",
+) -> dict[str, pl.DataFrame]:
+    df = _remove_debut_race(raw_df)
     df = df.drop("race_name")
 
-    df = df.select(
-        pl.col(Column.RANK).cast(pl.Int32),
-        pl.col(Column.HORSE_NUMBER).cast(pl.Int32),
-        pl.col(GENDER_AGE_COLUMN).alias(Column.GENDER),
-        pl.col(GENDER_AGE_COLUMN).str.extract(r"(\d+)").cast(pl.Int32).alias(Column.AGE),
-        pl.col(Column.TOTAL_WEIGHT).cast(pl.Float64).alias(Column.TOTAL_WEIGHT),
+    # filter race
+    select_exprs = [
+        pl.col(ResultColumn.HORSE_NUMBER).cast(pl.Int32),
+        pl.col(GENDER_AGE_COLUMN).alias(ResultColumn.GENDER),
+        pl.col(GENDER_AGE_COLUMN).str.extract(r"(\d+)").cast(pl.Int32).alias(ResultColumn.AGE),
+        pl.col(ResultColumn.TOTAL_WEIGHT).cast(pl.Float64).alias(ResultColumn.TOTAL_WEIGHT),
         # race
-        pl.col(Column.RACE_NUMBER).str.extract(r"(\d+)").cast(pl.Int32).alias(Column.RACE_NUMBER),
-        pl.col(Column.START_AT).str.extract(r"^(\d+)").cast(pl.Int32).alias(Column.START_AT),
-        pl.col(Column.DISTANCE).str.extract(r"(\d+)").cast(pl.Int32).alias(Column.DISTANCE),
-        pl.col(Column.DISTANCE).alias(Column.ROTATE),
-        pl.col(Column.DISTANCE).alias(Column.FIELD_TYPE),
-        pl.col(Column.WEATHER),
-        pl.col(Column.FIELD_CONDITION),
+        pl.col(ResultColumn.RACE_NUMBER).str.extract(r"(\d+)").cast(pl.Int32).alias(ResultColumn.RACE_NUMBER),
+        pl.col(ResultColumn.START_AT).str.extract(r"^(\d+)").cast(pl.Int32).alias(ResultColumn.START_AT),
+        pl.col(ResultColumn.DISTANCE).str.extract(r"(\d+)").cast(pl.Int32).alias(ResultColumn.DISTANCE),
+        pl.col(ResultColumn.DISTANCE).alias(ResultColumn.ROTATE),
+        pl.col(ResultColumn.DISTANCE).alias(ResultColumn.FIELD_TYPE),
+        pl.col(ResultColumn.WEATHER),
+        pl.col(ResultColumn.FIELD_CONDITION),
         # fresh
-        pl.col(Column.POPULAR).cast(pl.Int32).alias(Column.POPULAR),
-        pl.col(Column.ODDS).cast(pl.Float32).alias(Column.ODDS),
+        pl.col(ResultColumn.POPULAR).cast(pl.Int32).alias(ResultColumn.POPULAR),
+        pl.col(ResultColumn.ODDS).cast(pl.Float32).alias(ResultColumn.ODDS),
         (
             pl.col(HORSE_WEIGHT_AND_DIFF_COLUMN)
             .str.extract(r"\(([-\+\d]+)\)")
             .cast(pl.Int32)
-            .alias(Column.HORSE_WEIGHT_DIFF)
+            .alias(ResultColumn.HORSE_WEIGHT_DIFF)
         ),
         # not feature
-        pl.col(Column.RACE_ID),
-        pl.col(Column.RACE_DATE),
-        pl.col(Column.HORSE_NAME),
-        pl.col(Column.HORSE_ID),
-        pl.col(Column.JOCKEY_ID),
-        pl.col(Column.TRAINER_ID),
-    )
+        pl.col(ResultColumn.RACE_ID),
+        pl.col(ResultColumn.RACE_DATE),
+        pl.col(ResultColumn.HORSE_NAME),
+        pl.col(ResultColumn.HORSE_ID),
+        pl.col(ResultColumn.JOCKEY_ID),
+        pl.col(ResultColumn.TRAINER_ID),
+    ]
+    if mode == "train":
+        df = df.filter(~pl.col(ResultColumn.RANK).is_in({"中止", "除外", "取消"}))
+        select_exprs.append(pl.col(ResultColumn.RANK).cast(pl.Int32))
+    df = df.select(select_exprs)
 
     # label encoding
     gender_label_dict = {"牝": 0, "牡": 1, "セ": 2}
-    df = _label_encode(df=df, column=Column.GENDER, label_dict=gender_label_dict)
-    df = df.drop(Column.GENDER)
+    df = _label_encode(df=df, column=ResultColumn.GENDER, label_dict=gender_label_dict)
+    df = df.drop(ResultColumn.GENDER)
 
-    df = _label_encode(df=df, column=Column.ROTATE, label_dict={"左": 0, "右": 1})
-    df = _label_encode(df=df, column=Column.FIELD_TYPE, label_dict={"芝": 0, "ダ": 1, "障": 2})
+    df = _label_encode(df=df, column=ResultColumn.ROTATE, label_dict={"左": 0, "右": 1})
+    df = _label_encode(df=df, column=ResultColumn.FIELD_TYPE, label_dict={"芝": 0, "ダ": 1, "障": 2})
     df = _label_encode(
         df=df,
-        column=Column.WEATHER,
+        column=ResultColumn.WEATHER,
         label_dict={"晴": 0, "曇": 1, "小雨": 2, "雨": 3, "小雪": 4, "雪": 5},
     )
     df = _label_encode(
         df=df,
-        column=Column.FIELD_CONDITION,
+        column=ResultColumn.FIELD_CONDITION,
         label_dict={"良": 0, "稍": 1, "重": 2, "不": 3, "未": 4},
     )
 
+    # category type
+    df = df.with_columns(
+        [
+            pl.col(c).cast(pl.Categorical).alias(f"{c}_cat")
+            for c in (ResultColumn.HORSE_ID, ResultColumn.JOCKEY_ID, ResultColumn.TRAINER_ID)
+        ]
+    )
+
     # weight dev
-    weight_diff_avg_df = df.group_by("horse_id").agg(pl.mean(Column.HORSE_WEIGHT_DIFF).alias("weight_diff_avg"))
+    if mode == "train":
+        weight_diff_avg_df = df.group_by("horse_id").agg(
+            pl.mean(ResultColumn.HORSE_WEIGHT_DIFF).alias("weight_diff_avg")
+        )
+    elif weight_diff_avg_df is None:
+        raise ValueError("mode is not train, but weight_diff_avg_df is None")
+
     df = df.join(weight_diff_avg_df, on="horse_id", how="left")
     df = df.with_columns(
-        (pl.col(Column.HORSE_WEIGHT_DIFF) - pl.col("weight_diff_avg")).alias(Column.HORSE_WEIGHT_DIFF_DEV)
+        (pl.col(ResultColumn.HORSE_WEIGHT_DIFF) - pl.col("weight_diff_avg")).alias(ResultColumn.HORSE_WEIGHT_DIFF_DEV)
     )
-    return df
+    return {
+        "feature": df,
+        "weight_diff_avg": weight_diff_avg_df,
+    }
+
+
+def split_train_data(
+    data_df: pl.DataFrame,
+    train_first_date: str,
+    train_last_date: str,
+) -> tuple[pl.DataFrame, pl.DataFrame]:
+    # split train and valid
+    train_df = data_df.filter((pl.col("race_date") >= train_first_date) & (pl.col("race_date") <= train_last_date))
+    valid_df = data_df.filter(pl.col("race_date") > train_last_date)
+    return train_df, valid_df
 
 
 def main() -> None:
