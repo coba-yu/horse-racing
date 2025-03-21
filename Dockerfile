@@ -1,10 +1,15 @@
 # https://docs.astral.sh/uv/guides/integration/docker/
 FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
 
+# Required for selenium
 RUN apt-get update && apt-get install -y \
 		chromium \
 		chromium-driver \
 	&& rm -rf /var/lib/apt/lists/*
+
+# Required for lightgbm
+RUN apt-get install -y \
+		libgomp1
 
 WORKDIR /app
 COPY src /app/src
