@@ -271,7 +271,7 @@ def main() -> None:
     model = train(params=best_params, ds_train=ds_train, ds_valid=ds_valid)
 
     # save model
-    bucket = storage_client.get_bucket("yukob-horce-racing-models")
+    bucket = storage_client.get_bucket("yukob-horse-racing-models")
     with TemporaryDirectory() as tmp_dir_str:
         model_path = Path(tmp_dir_str) / "model.txt"
         model.save_model(model_path)
