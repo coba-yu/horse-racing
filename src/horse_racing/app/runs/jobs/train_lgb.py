@@ -1,11 +1,13 @@
+import json
 from argparse import ArgumentParser
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Literal
+from typing import Literal, Any
 
 import polars as pl
+import lightgbm as lgb
 
 from horse_racing.core.gcp.storage import StorageClient
 from horse_racing.core.logging import logger
@@ -24,10 +26,37 @@ class TrainConfig:
     train_last_date: str = ""
     valid_last_date: str = ""
     data_version: str = datetime.now().strftime("%Y%m%d_%H%M%S")
+    _feature_columns: str = ",".join(
+        [
+            "horse_number",
+            "frame",
+            "age",
+            "gender",
+            "total_weight",
+            "odds",
+            "horse_weight_diff_dev",
+            # categorical
+            "horse_id_cat",
+            "jockey_id_cat",
+            "trainer_id_cat",
+            # race info
+            "race_number",
+            "start_at",
+            "distance",
+            "rotate",
+            "field_type",
+            "weather",
+            "field_condition",
+        ]
+    )
 
     # constants
     model: str = "lightgbm"
     model_version: str = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    @property
+    def feature_columns(self) -> list[str]:
+        return self._feature_columns.split(",")
 
 
 def collect_data(
@@ -158,6 +187,23 @@ def split_train_data(
     return train_df, valid_df
 
 
+def train(params: dict[str, Any], ds_train: lgb.Dataset, ds_valid: lgb.Dataset) -> lgb.Booster:
+    model = lgb.train(
+        params,
+        ds_train,
+        num_boost_round=300,
+        valid_names=["train", "valid"],
+        valid_sets=[ds_train, ds_valid],
+        callbacks=[
+            lgb.early_stopping(
+                stopping_rounds=20,
+                # verbose=True,
+            ),
+        ],
+    )
+    return model
+
+
 def main() -> None:
     parser = ArgumentParser()
 
@@ -186,16 +232,55 @@ def main() -> None:
         logger.info(raw_df)
 
     # preprocess
-    processed_df = preprocess(raw_df=raw_df)
-    logger.info(processed_df)
+    data = preprocess(raw_df=raw_df)
+    with TemporaryDirectory() as tmp_dir_str:
+        tmp_dir = Path(tmp_dir_str)
+        race_result_repository = RaceResultNetkeibaRepository(
+            storage_client=storage_client,
+            root_dir=tmp_dir,
+        )
+        for k, df in data.items():
+            path = tmp_dir / f"{k}.parquet"
+            df.write_parquet(path)
+            race_result_repository.upload_data_to_storage(path=path, version=args.data_version)
+    processed_df = data["feature"]
 
     # split train and valid
+    train_df, valid_df = split_train_data(
+        data_df=processed_df,
+        train_last_date=args.train_last_date,
+        train_first_date=args.train_first_date,
+    )
+
+    train_feature_df = train_df.select(args.feature_columns)
+    train_label = (train_df[ResultColumn.RANK] == "1").cast(int).to_numpy()
+    valid_feature_df = valid_df.select(args.feature_columns)
+    valid_label = (valid_df[ResultColumn.RANK] == "1").cast(int).to_numpy()
+
+    ds_train = lgb.Dataset(train_feature_df.to_pandas(), label=train_label)
+    ds_valid = lgb.Dataset(valid_feature_df.to_pandas(), label=valid_label)
 
     # hyper param tuning
+    # TODO
+    best_params = {
+        "objective": "binary",
+        "metric": ["auc", "binary_logloss"],
+    }
 
     # train
+    model = train(params=best_params, ds_train=ds_train, ds_valid=ds_valid)
 
     # save model
+    bucket = storage_client.get_bucket("yukob-horce-racing-models")
+    with TemporaryDirectory() as tmp_dir_str:
+        model_path = Path(tmp_dir_str) / "model.txt"
+        model.save_model(model_path)
+        bucket.blob(f"model_version={args.model_version}/model.txt").upload_from_filename(str(model_path))
+
+        param_path = Path(tmp_dir_str) / "params.json"
+        with open(param_path, "w") as fp:
+            json.dump(best_params, fp)
+        bucket.blob(f"model_version={args.model_version}/params.json").upload_from_filename(str(param_path))
 
 
 if __name__ == "__main__":
