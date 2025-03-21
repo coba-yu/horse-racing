@@ -136,7 +136,6 @@ def preprocess(
     # label encoding
     gender_label_dict = {"牝": 0, "牡": 1, "セ": 2}
     df = _label_encode(df=df, column=ResultColumn.GENDER, label_dict=gender_label_dict)
-    df = df.drop(ResultColumn.GENDER)
 
     df = _label_encode(df=df, column=ResultColumn.ROTATE, label_dict={"左": 0, "右": 1})
     df = _label_encode(df=df, column=ResultColumn.FIELD_TYPE, label_dict={"芝": 0, "ダ": 1, "障": 2})
