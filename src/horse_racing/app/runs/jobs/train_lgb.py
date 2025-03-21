@@ -28,25 +28,25 @@ class TrainConfig:
     data_version: str = datetime.now().strftime("%Y%m%d_%H%M%S")
     _feature_columns: str = ",".join(
         [
-            "horse_number",
-            "frame",
-            "age",
-            "gender",
-            "total_weight",
-            "odds",
-            "horse_weight_diff_dev",
+            ResultColumn.HORSE_NUMBER,
+            ResultColumn.FRAME,
+            ResultColumn.AGE,
+            ResultColumn.GENDER,
+            ResultColumn.TOTAL_WEIGHT,
+            ResultColumn.ODDS,
+            ResultColumn.HORSE_WEIGHT_DIFF_DEV,
             # categorical
-            "horse_id_cat",
-            "jockey_id_cat",
-            "trainer_id_cat",
+            f"{ResultColumn.HORSE_ID}_cat",
+            f"{ResultColumn.JOCKEY_ID}_cat",
+            f"{ResultColumn.TRAINER_ID}_cat",
             # race info
-            "race_number",
-            "start_at",
-            "distance",
-            "rotate",
-            "field_type",
-            "weather",
-            "field_condition",
+            ResultColumn.RACE_NUMBER,
+            ResultColumn.START_AT,
+            ResultColumn.DISTANCE,
+            ResultColumn.ROTATE,
+            ResultColumn.FIELD_TYPE,
+            ResultColumn.WEATHER,
+            ResultColumn.FIELD_CONDITION,
         ]
     )
 
@@ -99,6 +99,7 @@ def preprocess(
     # filter race
     select_exprs = [
         pl.col(ResultColumn.HORSE_NUMBER).cast(pl.Int32),
+        pl.col(ResultColumn.FRAME).cast(pl.Int32),
         pl.col(GENDER_AGE_COLUMN).alias(ResultColumn.GENDER),
         pl.col(GENDER_AGE_COLUMN).str.extract(r"(\d+)").cast(pl.Int32).alias(ResultColumn.AGE),
         pl.col(ResultColumn.TOTAL_WEIGHT).cast(pl.Float64).alias(ResultColumn.TOTAL_WEIGHT),
@@ -229,7 +230,7 @@ def main() -> None:
             first_date=args.train_first_date,
             last_date=args.valid_last_date,
         )
-        logger.info(raw_df)
+        logger.info(f"raw_df: {raw_df.shape}, {raw_df.columns}")
 
     # preprocess
     data = preprocess(raw_df=raw_df)
