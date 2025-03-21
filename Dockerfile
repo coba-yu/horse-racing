@@ -8,8 +8,9 @@ RUN apt-get update && apt-get install -y \
 	&& rm -rf /var/lib/apt/lists/*
 
 # Required for lightgbm
-RUN apt-get install -y \
-		libgomp1
+RUN apt-get update && apt-get install -y \
+		libgomp1 \
+	&& rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 COPY src /app/src
