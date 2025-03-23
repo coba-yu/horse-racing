@@ -113,7 +113,7 @@ def tune_hyper_params(
         "min_data_in_leaf": ("suggest_int", {"low": 10, "high": 100}),
         "feature_fraction": ("suggest_float", {"low": 0.5, "high": 1.0}),
         "bagging_fraction": ("suggest_float", {"low": 0.5, "high": 1.0}),
-        # "bagging_freq": ("suggest_int", {"low": 1, "high": 7}),
+        "bagging_freq": ("suggest_int", {"low": 0, "high": 7}),
     }
 
     def objective(trial: optuna.Trial) -> float:
