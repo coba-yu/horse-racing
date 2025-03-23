@@ -231,7 +231,7 @@ def tune_hyper_params(
     def objective(trial: optuna.Trial) -> float:
         params = {
             **const_params,
-            "learning_rate": trial.suggest_uniform("learning_rate", 1e-3, 1e-1, log=True),
+            "learning_rate": trial.suggest_loguniform("learning_rate", 1e-3, 1e-1),
             "num_leaves": trial.suggest_int("num_leaves", 20, 150),
             "max_depth": trial.suggest_int("max_depth", 3, 12),
             "min_data_in_leaf": trial.suggest_int("min_data_in_leaf", 10, 100),
