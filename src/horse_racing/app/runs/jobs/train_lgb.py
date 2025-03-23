@@ -217,6 +217,11 @@ def train(
         ],
     )
 
+    # logging feature importance
+    importance_type = "gain"
+    feature_importance = model.feature_importance(importance_type=importance_type)
+    logger.info(f"feature importance ({importance_type}): {feature_importance}")
+
     y_pred = model.predict(valid_feature_df.to_pandas())
     y_true = ds_valid.label
     auc = roc_auc_score(y_true=y_true, y_score=y_pred)
