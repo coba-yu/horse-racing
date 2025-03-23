@@ -83,12 +83,6 @@ def train(
         ],
     )
 
-    # logging feature importance
-    importance_type = "gain"
-    importance_values = model.feature_importance(importance_type=importance_type)
-    importance_dict = {name: importance for name, importance in zip(feature_columns, importance_values)}
-    logger.info(f"feature importance ({importance_type}): {importance_dict}")
-
     y_pred = model.predict(valid_feature_df.to_pandas())
     y_true = ds_valid.label
     auc = roc_auc_score(y_true=y_true, y_score=y_pred)
@@ -192,6 +186,12 @@ def main() -> None:
         valid_df=valid_df,
         feature_columns=args.feature_columns,
     )
+
+    # logging feature importance
+    importance_type = "gain"
+    importance_values = model.feature_importance(importance_type=importance_type)
+    importance_dict = {name: float(importance) for name, importance in zip(args.feature_columns, importance_values)}
+    logger.info(f"feature importance ({importance_type}): {importance_dict}")
 
     # save model
     with TemporaryDirectory() as tmp_dir_str:
