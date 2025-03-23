@@ -114,6 +114,8 @@ def tune_hyper_params(
         "feature_fraction": ("suggest_float", {"low": 0.5, "high": 1.0}),
         "bagging_fraction": ("suggest_float", {"low": 0.5, "high": 1.0}),
         "bagging_freq": ("suggest_int", {"low": 0, "high": 7}),
+        "lambda_l1": ("suggest_float", {"low": 1e-8, "high": 10.0, "log": True}),
+        "lambda_l2": ("suggest_float", {"low": 1e-8, "high": 10.0, "log": True}),
     }
 
     def objective(trial: optuna.Trial) -> float:
