@@ -100,9 +100,9 @@ def tune_hyper_params(
     const_params = {
         "objective": "binary",
         "metric": ["auc", "binary_logloss"],
+        "learning_rate": 0.01,
     }
     param_settings = {
-        # "learning_rate": ("suggest_loguniform", {"low": 1e-3, "high": 1e-1}),
         "num_leaves": ("suggest_int", {"low": 20, "high": 150}),
         "min_data_in_leaf": ("suggest_int", {"low": 10, "high": 100}),
         "feature_fraction": ("suggest_float", {"low": 0.5, "high": 1.0}),
