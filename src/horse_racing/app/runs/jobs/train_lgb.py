@@ -6,8 +6,10 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Literal, Any
 
+import optuna
 import polars as pl
 import lightgbm as lgb
+from sklearn.metrics import roc_auc_score
 
 from horse_racing.core.gcp.storage import StorageClient
 from horse_racing.core.logging import logger
@@ -187,7 +189,11 @@ def split_train_data(
     return train_df, valid_df
 
 
-def train(params: dict[str, Any], ds_train: lgb.Dataset, ds_valid: lgb.Dataset) -> lgb.Booster:
+def train(
+    params: dict[str, Any],
+    ds_train: lgb.Dataset,
+    ds_valid: lgb.Dataset,
+) -> tuple[lgb.Booster, dict[str, float]]:
     model = lgb.train(
         params,
         ds_train,
@@ -201,7 +207,45 @@ def train(params: dict[str, Any], ds_train: lgb.Dataset, ds_valid: lgb.Dataset) 
             ),
         ],
     )
-    return model
+
+    y_pred = model.predict(ds_valid.data)
+    y_true = ds_valid.label
+    auc = roc_auc_score(y_true=y_true, y_score=y_pred)
+    return model, {"auc": auc}
+
+
+def tune_hyper_params(
+    ds_train: lgb.Dataset,
+    ds_valid: lgb.Dataset,
+    metric_key: str,
+    n_trials: int,
+    direction: Literal["maximize", "minimize"],
+) -> dict[str, Any]:
+    const_params = {
+        "objective": "binary",
+        "metric": "binary_logloss",
+        "boosting_type": "gbdt",
+        "feature_pre_filter": False,
+    }
+
+    def objective(trial: optuna.Trial) -> float:
+        params = {
+            **const_params,
+            "learning_rate": trial.suggest_uniform("learning_rate", 1e-3, 1e-1, log=True),
+            "num_leaves": trial.suggest_int("num_leaves", 20, 150),
+            "max_depth": trial.suggest_int("max_depth", 3, 12),
+            "min_data_in_leaf": trial.suggest_int("min_data_in_leaf", 10, 100),
+            "feature_fraction": trial.suggest_uniform("feature_fraction", 0.5, 1.0),
+            "bagging_fraction": trial.suggest_uniform("bagging_fraction", 0.5, 1.0),
+            "bagging_freq": trial.suggest_int("bagging_freq", 1, 7),
+        }
+
+        _, metric = train(params=params, ds_train=ds_train, ds_valid=ds_valid)
+        return metric[metric_key]
+
+    study = optuna.create_study(direction=direction)
+    study.optimize(objective, n_trials=n_trials)
+    return dict(**study.best_params)
 
 
 def main() -> None:
@@ -261,14 +305,16 @@ def main() -> None:
     ds_valid = lgb.Dataset(valid_feature_df.to_pandas(), label=valid_label)
 
     # hyper param tuning
-    # TODO
-    best_params = {
-        "objective": "binary",
-        "metric": ["auc", "binary_logloss"],
-    }
+    best_params = tune_hyper_params(
+        ds_train=ds_train,
+        ds_valid=ds_valid,
+        metric_key="auc",
+        direction="maximize",
+        n_trials=100,
+    )
 
     # train
-    model = train(params=best_params, ds_train=ds_train, ds_valid=ds_valid)
+    model, metric = train(params=best_params, ds_train=ds_train, ds_valid=ds_valid)
 
     # save model
     bucket = storage_client.get_bucket("yukob-horse-racing-models")
@@ -281,6 +327,11 @@ def main() -> None:
         with open(param_path, "w") as fp:
             json.dump(best_params, fp)
         bucket.blob(f"model_version={args.model_version}/params.json").upload_from_filename(str(param_path))
+
+        metric_path = Path(tmp_dir_str) / "metrics.json"
+        with open(metric_path, "w") as fp:
+            json.dump(metric, fp)
+        bucket.blob(f"model_version={args.model_version}/metrics.json").upload_from_filename(str(metric_path))
 
 
 if __name__ == "__main__":
