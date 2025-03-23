@@ -110,7 +110,7 @@ def tune_hyper_params(
     param_settings = {
         # "learning_rate": ("suggest_loguniform", {"low": 1e-3, "high": 1e-1}),
         "num_leaves": ("suggest_int", {"low": 20, "high": 150}),
-        # "min_data_in_leaf": ("suggest_int", {"low": 10, "high": 100}),
+        "min_data_in_leaf": ("suggest_int", {"low": 10, "high": 100}),
         # "feature_fraction": ("suggest_uniform", {"low": 0.5, "high": 1.0}),
         # "bagging_fraction": ("suggest_uniform", {"low": 0.5, "high": 1.0}),
         # "bagging_freq": ("suggest_int", {"low": 1, "high": 7}),
