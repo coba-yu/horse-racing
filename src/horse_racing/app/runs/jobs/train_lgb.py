@@ -111,16 +111,15 @@ def tune_hyper_params(
         # "learning_rate": ("suggest_loguniform", {"low": 1e-3, "high": 1e-1}),
         "num_leaves": ("suggest_int", {"low": 20, "high": 150}),
         "min_data_in_leaf": ("suggest_int", {"low": 10, "high": 100}),
-        "feature_fraction": ("suggest_uniform", {"low": 0.5, "high": 1.0}),
-        "bagging_fraction": ("suggest_uniform", {"low": 0.5, "high": 1.0}),
+        "feature_fraction": ("suggest_float", {"low": 0.5, "high": 1.0}),
+        "bagging_fraction": ("suggest_float", {"low": 0.5, "high": 1.0}),
         # "bagging_freq": ("suggest_int", {"low": 1, "high": 7}),
     }
 
     def objective(trial: optuna.Trial) -> float:
         suggest_fn_dict = {
             "suggest_int": trial.suggest_int,
-            "suggest_loguniform": trial.suggest_loguniform,
-            "suggest_uniform": trial.suggest_uniform,
+            "suggest_float": trial.suggest_float,
         }
 
         params = dict(**const_params)
