@@ -233,22 +233,28 @@ def tune_hyper_params(
 ) -> dict[str, Any]:
     const_params = {
         "objective": "binary",
-        "metric": "binary_logloss",
-        "boosting_type": "gbdt",
-        "feature_pre_filter": False,
+        "metric": ["auc", "binary_logloss"],
+    }
+    param_settings = {
+        "learning_rate": ("suggest_loguniform", {"low": 1e-3, "high": 1e-1}),
+        "num_leaves": ("suggest_int", {"low": 20, "high": 150}),
+        "max_depth": ("suggest_int", {"low": 3, "high": 12}),
+        # "min_data_in_leaf": ("suggest_int", {"low": 10, "high": 100}),
+        # "feature_fraction": ("suggest_uniform", {"low": 0.5, "high": 1.0}),
+        # "bagging_fraction": ("suggest_uniform", {"low": 0.5, "high": 1.0}),
+        # "bagging_freq": ("suggest_int", {"low": 1, "high": 7}),
     }
 
     def objective(trial: optuna.Trial) -> float:
-        params = {
-            **const_params,
-            "learning_rate": trial.suggest_loguniform("learning_rate", 1e-3, 1e-1),
-            "num_leaves": trial.suggest_int("num_leaves", 20, 150),
-            "max_depth": trial.suggest_int("max_depth", 3, 12),
-            "min_data_in_leaf": trial.suggest_int("min_data_in_leaf", 10, 100),
-            "feature_fraction": trial.suggest_uniform("feature_fraction", 0.5, 1.0),
-            "bagging_fraction": trial.suggest_uniform("bagging_fraction", 0.5, 1.0),
-            "bagging_freq": trial.suggest_int("bagging_freq", 1, 7),
+        suggest_fn_dict = {
+            "suggest_int": trial.suggest_int,
+            "suggest_loguniform": trial.suggest_loguniform,
+            "suggest_uniform": trial.suggest_uniform,
         }
+
+        params = dict(**const_params)
+        for k, (fn_name, kw) in param_settings.items():
+            params[k] = suggest_fn_dict[fn_name](k, **kw)
 
         _, metric = train(params=params, train_df=train_df, valid_df=valid_df, feature_columns=feature_columns)
         return metric[metric_key]
