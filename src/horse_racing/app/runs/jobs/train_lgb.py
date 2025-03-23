@@ -191,9 +191,18 @@ def split_train_data(
 
 def train(
     params: dict[str, Any],
-    ds_train: lgb.Dataset,
-    ds_valid: lgb.Dataset,
+    train_df: pl.DataFrame,
+    valid_df: pl.DataFrame,
+    feature_columns: list[str],
 ) -> tuple[lgb.Booster, dict[str, float]]:
+    train_feature_df = train_df.select(feature_columns)
+    train_label = (train_df[ResultColumn.RANK] == "1").cast(int).to_numpy()
+    valid_feature_df = valid_df.select(feature_columns)
+    valid_label = (valid_df[ResultColumn.RANK] == "1").cast(int).to_numpy()
+
+    ds_train = lgb.Dataset(train_feature_df.to_pandas(), label=train_label)
+    ds_valid = lgb.Dataset(valid_feature_df.to_pandas(), label=valid_label)
+
     model = lgb.train(
         params,
         ds_train,
@@ -208,15 +217,16 @@ def train(
         ],
     )
 
-    y_pred = model.predict(ds_valid.data)
+    y_pred = model.predict(valid_feature_df.to_pandas())
     y_true = ds_valid.label
     auc = roc_auc_score(y_true=y_true, y_score=y_pred)
     return model, {"auc": auc}
 
 
 def tune_hyper_params(
-    ds_train: lgb.Dataset,
-    ds_valid: lgb.Dataset,
+    train_df: pl.DataFrame,
+    valid_df: pl.DataFrame,
+    feature_columns: list[str],
     metric_key: str,
     n_trials: int,
     direction: Literal["maximize", "minimize"],
@@ -240,7 +250,7 @@ def tune_hyper_params(
             "bagging_freq": trial.suggest_int("bagging_freq", 1, 7),
         }
 
-        _, metric = train(params=params, ds_train=ds_train, ds_valid=ds_valid)
+        _, metric = train(params=params, train_df=train_df, valid_df=valid_df, feature_columns=feature_columns)
         return metric[metric_key]
 
     study = optuna.create_study(direction=direction)
@@ -296,25 +306,23 @@ def main() -> None:
         train_first_date=args.train_first_date,
     )
 
-    train_feature_df = train_df.select(args.feature_columns)
-    train_label = (train_df[ResultColumn.RANK] == "1").cast(int).to_numpy()
-    valid_feature_df = valid_df.select(args.feature_columns)
-    valid_label = (valid_df[ResultColumn.RANK] == "1").cast(int).to_numpy()
-
-    ds_train = lgb.Dataset(train_feature_df.to_pandas(), label=train_label)
-    ds_valid = lgb.Dataset(valid_feature_df.to_pandas(), label=valid_label)
-
     # hyper param tuning
     best_params = tune_hyper_params(
-        ds_train=ds_train,
-        ds_valid=ds_valid,
+        train_df=train_df,
+        valid_df=valid_df,
+        feature_columns=args.feature_columns,
         metric_key="auc",
         direction="maximize",
         n_trials=100,
     )
 
     # train
-    model, metric = train(params=best_params, ds_train=ds_train, ds_valid=ds_valid)
+    model, metric = train(
+        params=best_params,
+        train_df=train_df,
+        valid_df=valid_df,
+        feature_columns=args.feature_columns,
+    )
 
     # save model
     bucket = storage_client.get_bucket("yukob-horse-racing-models")
