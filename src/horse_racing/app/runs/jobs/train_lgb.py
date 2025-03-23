@@ -107,8 +107,8 @@ def tune_hyper_params(
         "metric": ["auc", "binary_logloss"],
     }
     param_settings = {
-        "learning_rate": ("suggest_loguniform", {"low": 1e-3, "high": 1e-1}),
-        # "num_leaves": ("suggest_int", {"low": 20, "high": 150}),
+        # "learning_rate": ("suggest_loguniform", {"low": 1e-3, "high": 1e-1}),
+        "num_leaves": ("suggest_int", {"low": 20, "high": 150}),
         # "max_depth": ("suggest_int", {"low": 3, "high": 12}),
         # "min_data_in_leaf": ("suggest_int", {"low": 10, "high": 100}),
         # "feature_fraction": ("suggest_uniform", {"low": 0.5, "high": 1.0}),
