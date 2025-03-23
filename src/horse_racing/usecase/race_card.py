@@ -23,7 +23,7 @@ _RESULT_COLUMN_RENAME_DICT = {
     "騎手": ResultColumn.JOCKEY_NAME,
     "厩舎": ResultColumn.TRAINER_NAME,
     "馬体重 (増減)": HORSE_WEIGHT_AND_DIFF_COLUMN,
-    "オッズ": ResultColumn.ODDS,
+    "オッズ 更新": ResultColumn.ODDS,
     "人気": ResultColumn.POPULAR,
 }
 
