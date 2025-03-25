@@ -159,3 +159,30 @@ resource "google_cloud_run_v2_job" "train_lgb_job" {
     google_storage_bucket.netkeiba_htmls,
   ]
 }
+
+resource "google_cloud_run_v2_job" "train_xgb_job" {
+  name                = "train-xgb-job"
+  location            = var.region
+  deletion_protection = false
+  template {
+    template {
+      containers {
+        image   = "${var.region}-docker.pkg.dev/${var.google_project}/${var.gcp_artifact_repository_name}/${var.gcp_horse_racing_image_name}:latest"
+        command = ["python3", "src/horse_racing/app/runs/jobs/train_xgb.py"]
+        resources {
+          limits = {
+            cpu    = "4"
+            memory = "2Gi"
+          }
+        }
+      }
+      service_account = "${google_service_account.yukob_horse_racing_job.account_id}@${var.google_project}.iam.gserviceaccount.com"
+      timeout         = "7200s"
+    }
+  }
+  depends_on = [
+    google_service_account.yukob_horse_racing_job,
+    google_storage_bucket.netkeiba_data,
+    google_storage_bucket.netkeiba_htmls,
+  ]
+}
