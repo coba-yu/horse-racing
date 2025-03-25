@@ -43,7 +43,7 @@ def train(
         early_stopping_rounds=20,
     )
 
-    y_pred = model.predict(valid_feature_df.to_pandas())
+    y_pred = model.predict(ds_valid)
     y_true = ds_valid.get_label()
     auc = roc_auc_score(y_true=y_true, y_score=y_pred)
     return model, {"auc": auc}
