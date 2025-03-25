@@ -1,4 +1,6 @@
 import json
+from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Literal, Any
@@ -13,6 +15,46 @@ from horse_racing.usecase.race_result import (
     GENDER_AGE_COLUMN,
     HORSE_WEIGHT_AND_DIFF_COLUMN,
 )
+
+
+@dataclass
+class TrainConfig:
+    model: str
+
+    train_first_date: str = ""
+    train_last_date: str = ""
+    valid_last_date: str = ""
+    data_version: str = datetime.now().strftime("%Y%m%d_%H%M%S")
+    _feature_columns: str = ",".join(
+        [
+            ResultColumn.HORSE_NUMBER,
+            ResultColumn.FRAME,
+            ResultColumn.AGE,
+            ResultColumn.GENDER,
+            ResultColumn.TOTAL_WEIGHT,
+            ResultColumn.ODDS,
+            ResultColumn.HORSE_WEIGHT_DIFF_DEV,
+            # categorical
+            f"{ResultColumn.HORSE_ID}_cat",
+            f"{ResultColumn.JOCKEY_ID}_cat",
+            f"{ResultColumn.TRAINER_ID}_cat",
+            # race info
+            ResultColumn.RACE_NUMBER,
+            ResultColumn.START_AT,
+            ResultColumn.DISTANCE,
+            ResultColumn.ROTATE,
+            ResultColumn.FIELD_TYPE,
+            ResultColumn.WEATHER,
+            ResultColumn.FIELD_CONDITION,
+        ]
+    )
+
+    # constants
+    model_version: str = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    @property
+    def feature_columns(self) -> list[str]:
+        return self._feature_columns.split(",")
 
 
 def collect_data(

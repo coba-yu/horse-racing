@@ -1,6 +1,4 @@
 from argparse import ArgumentParser
-from dataclasses import dataclass
-from datetime import datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Literal, Any
@@ -10,49 +8,17 @@ import optuna
 import polars as pl
 from sklearn.metrics import roc_auc_score
 
-from horse_racing.app.runs.jobs.utils.train import split_train_data, preprocess, collect_data, upload_data, upload_model
+from horse_racing.app.runs.jobs.utils.train import (
+    split_train_data,
+    preprocess,
+    collect_data,
+    upload_data,
+    upload_model,
+    TrainConfig,
+)
 from horse_racing.core.gcp.storage import StorageClient
 from horse_racing.core.logging import logger
 from horse_racing.usecase.race_result import ResultColumn
-
-
-@dataclass
-class TrainConfig:
-    train_first_date: str = ""
-    train_last_date: str = ""
-    valid_last_date: str = ""
-    data_version: str = datetime.now().strftime("%Y%m%d_%H%M%S")
-    _feature_columns: str = ",".join(
-        [
-            ResultColumn.HORSE_NUMBER,
-            ResultColumn.FRAME,
-            ResultColumn.AGE,
-            ResultColumn.GENDER,
-            ResultColumn.TOTAL_WEIGHT,
-            ResultColumn.ODDS,
-            ResultColumn.HORSE_WEIGHT_DIFF_DEV,
-            # categorical
-            f"{ResultColumn.HORSE_ID}_cat",
-            f"{ResultColumn.JOCKEY_ID}_cat",
-            f"{ResultColumn.TRAINER_ID}_cat",
-            # race info
-            ResultColumn.RACE_NUMBER,
-            ResultColumn.START_AT,
-            ResultColumn.DISTANCE,
-            ResultColumn.ROTATE,
-            ResultColumn.FIELD_TYPE,
-            ResultColumn.WEATHER,
-            ResultColumn.FIELD_CONDITION,
-        ]
-    )
-
-    # constants
-    model: str = "lightgbm"
-    model_version: str = datetime.now().strftime("%Y%m%d_%H%M%S")
-
-    @property
-    def feature_columns(self) -> list[str]:
-        return self._feature_columns.split(",")
 
 
 def train(
@@ -141,7 +107,9 @@ def main() -> None:
     # optional
     parser.add_argument("--data-version", type=str)
 
-    args, _ = parser.parse_known_args(namespace=TrainConfig())
+    args, _ = parser.parse_known_args(
+        namespace=TrainConfig(model="lightgbm"),
+    )
     logger.info(f"{args=}")
 
     storage_client = StorageClient()
