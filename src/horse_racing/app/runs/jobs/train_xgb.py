@@ -150,8 +150,7 @@ def main() -> None:
 
     # logging feature importance
     importance_type = "weight"
-    importance_values = model.get_score(importance_type=importance_type)
-    importance_dict = {name: float(importance) for name, importance in zip(args.feature_columns, importance_values)}
+    importance_dict = model.get_score(importance_type=importance_type)
     logger.info(f"feature importance ({importance_type}): {importance_dict}")
 
     # save model
