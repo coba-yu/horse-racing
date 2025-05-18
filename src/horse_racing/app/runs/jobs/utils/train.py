@@ -32,7 +32,7 @@ class TrainConfig:
             ResultColumn.AGE,
             ResultColumn.GENDER,
             ResultColumn.TOTAL_WEIGHT,
-            ResultColumn.ODDS,
+            # ResultColumn.ODDS,  # TODO: use predicted odds
             ResultColumn.HORSE_WEIGHT_DIFF_DEV,
             # categorical
             f"{ResultColumn.HORSE_ID}_cat",
