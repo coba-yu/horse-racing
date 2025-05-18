@@ -111,7 +111,7 @@ def preprocess(
         pl.col(ResultColumn.FIELD_CONDITION),
         # fresh
         pl.col(ResultColumn.POPULAR).cast(pl.Int32).alias(ResultColumn.POPULAR),
-        pl.col(ResultColumn.ODDS).cast(pl.Float32).alias(ResultColumn.ODDS),
+        # pl.col(ResultColumn.ODDS).cast(pl.Float32).alias(ResultColumn.ODDS),  # TODO: use predicted odds
         (
             pl.col(HORSE_WEIGHT_AND_DIFF_COLUMN)
             .str.extract(r"\(([-\+\d]+)\)")
