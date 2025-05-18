@@ -265,28 +265,31 @@ class RaceResultUsecase:
             )
             return pl.read_parquet(result_path)
 
-        for data in tqdm(
-            self.race_result_repository.get_iter(first_date=first_date, last_date=last_date),
-            mininterval=60.0,
-            maxinterval=180.0,
-        ):
-            race_id = data["race_id"]
-            race_date = data["race_date"]
-            sub_dir = f"race_date={race_date}"
+        race_id = ""
+        race_date = ""
+        try:
+            for data in tqdm(
+                self.race_result_repository.get_iter(first_date=first_date, last_date=last_date),
+                mininterval=60.0,
+                maxinterval=180.0,
+            ):
+                race_id = data["race_id"]
+                race_date = data["race_date"]
+                sub_dir = f"race_date={race_date}"
 
-            try:
                 result_df = convert_html_to_dataframe(html=data["html"], race_date=race_date, race_id=race_id)
 
                 result_dir = data_dir / "race_result" / sub_dir
                 result_dir.mkdir(parents=True, exist_ok=True)
                 result_df.write_parquet(result_dir / f"{race_id}.parquet")
-            except ValueError:
-                logger.error(f"Error: {race_id=}, {race_date=}\n{format_exc()}")
-        df = pl.read_parquet(data_dir)
+            df = pl.read_parquet(data_dir)
 
-        # cache to storage
-        result_path = data_dir / "race_result.parquet"
-        df.write_parquet(result_path)
-        self.race_result_repository.upload_data_to_storage(path=result_path, version=version)
+            # cache to storage
+            result_path = data_dir / "race_result.parquet"
+            df.write_parquet(result_path)
+            self.race_result_repository.upload_data_to_storage(path=result_path, version=version)
 
-        return df
+            return df
+        except ValueError:
+            logger.error(f"Error: {race_id=}, {race_date=}\n{format_exc()}")
+            raise
