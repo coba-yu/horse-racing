@@ -39,7 +39,7 @@ def scrape_by_race_date(
         race_ids = schedule_usecase.get_race_ids(race_date=race_date)
         logger.info(f"race_ids: {race_ids}")
 
-        for race_id in tqdm(race_ids, mininterval=60.0, maxinterval=180.0):
+        for race_id in tqdm(race_ids, mininterval=60.0, maxinterval=180.0, desc=f"[{race_date=}]"):
             logger.info(f"race_id: {race_id}")
             result_usecase.get_raw_html(race_date=race_date, race_id=race_id)  # Tnot used returned html
 
