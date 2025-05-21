@@ -32,7 +32,7 @@ class TrainConfig:
             ResultColumn.AGE,
             ResultColumn.GENDER,
             ResultColumn.TOTAL_WEIGHT,
-            # ResultColumn.ODDS,  # TODO: use predicted odds
+            ResultColumn.ODDS,  # TODO: use predicted odds
             ResultColumn.HORSE_WEIGHT_DIFF_DEV,
             # categorical
             f"{ResultColumn.HORSE_ID}_cat",
@@ -111,7 +111,7 @@ def preprocess(
         pl.col(ResultColumn.FIELD_CONDITION),
         # fresh
         pl.col(ResultColumn.POPULAR).cast(pl.Int32).alias(ResultColumn.POPULAR),
-        # pl.col(ResultColumn.ODDS).cast(pl.Float32).alias(ResultColumn.ODDS),  # TODO: use predicted odds
+        pl.col(ResultColumn.ODDS).cast(pl.Float32).alias(ResultColumn.ODDS),  # TODO: use predicted odds
         (
             pl.col(HORSE_WEIGHT_AND_DIFF_COLUMN)
             .str.extract(r"\(([-\+\d]+)\)")
