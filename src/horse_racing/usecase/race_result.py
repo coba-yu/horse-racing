@@ -290,6 +290,6 @@ class RaceResultUsecase:
             self.race_result_repository.upload_data_to_storage(path=result_path, version=version)
 
             return df
-        except ValueError:
+        except Exception:
             logger.error(f"Error: {race_id=}, {race_date=}\n{format_exc()}")
             raise
