@@ -170,6 +170,7 @@ def main() -> None:
             model_path=model_path,
             best_params=best_params,
             metric=metric,
+            feature_colums=args.feature_columns,
             tmp_dir=tmp_dir,
             storage_client=storage_client,
             model_name=args.model,

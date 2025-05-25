@@ -86,9 +86,58 @@ def _remove_debut_race(df: pl.DataFrame) -> pl.DataFrame:
     return df
 
 
+def _agg_jockey(df: pl.DataFrame) -> pl.DataFrame:
+    jockey_base_df = df.select(
+        [
+            pl.col(ResultColumn.RANK).cast(pl.Int32),
+            pl.col(ResultColumn.JOCKEY_ID).cast(pl.String),
+        ],
+    )
+
+    jockey_race_count_df = jockey_base_df.group_by(ResultColumn.JOCKEY_ID).agg(
+        pl.col(ResultColumn.RANK).count().alias("race_count")
+    )
+
+    # win: 単勝
+    jockey_win_count_df = jockey_base_df.group_by(ResultColumn.JOCKEY_ID).agg(
+        pl.col(ResultColumn.RANK)
+        .filter(pl.col(ResultColumn.RANK) == 1)
+        .count()
+        .alias(f"{ResultColumn.JOCKEY_ID}_win_count")
+    )
+    jockey_win_rate_df = jockey_race_count_df.join(jockey_win_count_df, on=ResultColumn.JOCKEY_ID, how="left").select(
+        pl.col(ResultColumn.JOCKEY_ID),
+        (pl.col(f"{ResultColumn.JOCKEY_ID}_win_count") / pl.col("race_count")).alias(
+            f"{ResultColumn.JOCKEY_ID}_win_rate"
+        ),
+    )
+
+    # show: 複勝
+    jockey_show_count_df = jockey_base_df.group_by(ResultColumn.JOCKEY_ID).agg(
+        pl.col(ResultColumn.RANK)
+        .filter(pl.col(ResultColumn.RANK) >= 1)
+        .filter(pl.col(ResultColumn.RANK) <= 3)
+        .count()
+        .alias(f"{ResultColumn.JOCKEY_ID}_show_count")
+    )
+    jockey_show_rate_df = jockey_race_count_df.join(jockey_show_count_df, on=ResultColumn.JOCKEY_ID, how="left").select(
+        pl.col(ResultColumn.JOCKEY_ID),
+        (pl.col(f"{ResultColumn.JOCKEY_ID}_show_count") / pl.col("race_count")).alias(
+            f"{ResultColumn.JOCKEY_ID}_show_rate"
+        ),
+    )
+
+    return (
+        jockey_win_count_df.join(jockey_win_rate_df, on=ResultColumn.JOCKEY_ID, how="left")
+        .join(jockey_show_count_df, on=ResultColumn.JOCKEY_ID, how="left")
+        .join(jockey_show_rate_df, on=ResultColumn.JOCKEY_ID, how="left")
+    )
+
+
 def preprocess(
     raw_df: pl.DataFrame,
     weight_diff_avg_df: pl.DataFrame | None = None,
+    jockey_df: pl.DataFrame | None = None,
     mode: Literal["train", "predict"] = "train",
 ) -> dict[str, pl.DataFrame]:
     df = _remove_debut_race(raw_df)
@@ -156,6 +205,12 @@ def preprocess(
         ]
     )
 
+    # jockey target encoding
+    if mode == "train":
+        jockey_df = _agg_jockey(df)
+    if jockey_df is not None:
+        df = df.join(jockey_df, on=ResultColumn.JOCKEY_ID, how="left")
+
     # weight dev
     if mode == "train":
         weight_diff_avg_df = df.group_by("horse_id").agg(
@@ -171,6 +226,7 @@ def preprocess(
     return {
         "feature": df,
         "weight_diff_avg": weight_diff_avg_df,
+        "jockey": jockey_df,
     }
 
 
@@ -201,6 +257,7 @@ def split_train_data(
 def upload_model(
     model_path: Path,
     best_params: dict[str, Any],
+    feature_colums: list[str],
     metric: dict[str, float],
     tmp_dir: Path,
     storage_client: StorageClient,
@@ -218,6 +275,10 @@ def upload_model(
     with open(param_path, "w") as fp:
         json.dump(best_params, fp)
     bucket.blob(f"{prefix}/params.json").upload_from_filename(str(param_path))
+
+    feature_columns_path = tmp_dir / "feature_columns.json"
+    with open(feature_columns_path, "w") as fp:
+        json.dump(feature_colums, fp)
 
     # upload metric
     metric_path = tmp_dir / "metrics.json"
