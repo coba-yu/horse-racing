@@ -51,7 +51,7 @@ class RaceResultNetkeibaRepository:
         url = f"https://race.netkeiba.com/race/result.html?race_id={race_id}"
 
         logger.info(f"Downloading {url} to {cache_path}")
-        html = self.driver.get_page_source(url=url)
+        html = str(self.driver.get_page_source(url=url))
 
         cache_path.parent.mkdir(parents=True, exist_ok=True)
         with open(cache_path, "w") as f:
