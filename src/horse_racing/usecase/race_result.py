@@ -35,6 +35,8 @@ class ResultColumn:
     # race info
     RACE_NUMBER: str = "race_number"
     RACE_NAME: str = "race_name"
+    RACE_PLACE: str = "race_place"
+    RACE_CLASS: str = "race_class"
     START_AT: str = "start_at"
     DISTANCE: str = "distance"
     ROTATE: str = "rotate"
@@ -113,6 +115,25 @@ def extract_race_info(soup: BeautifulSoup) -> dict[str, Any]:
             race_info[k] = race_info_texts[i]
         else:
             race_info[k] = None
+
+    # => "2回 京都 11日目 サラ系３歳 未勝利       [指] 馬齢 18頭
+    race_data_2_tag = race_list_name_box.select_one(".RaceList_Item02 .RaceData02")
+    if race_data_2_tag is None:
+        race_info[ResultColumn.RACE_PLACE] = None
+        race_info[ResultColumn.RACE_CLASS] = None
+    else:
+        # => [
+        #   "2回\n京都\n9日目\nサラ系３歳\n未勝利",
+        #   "[指]\n馬齢\n16頭",
+        #   "本賞金:560,220,140,84,56万円",
+        # ]
+        race_data_2_lines = re.split(r"\s{2,}", race_data_2_tag.get_text().strip("\n"))
+        race_data_2_0_texts = race_data_2_lines[0].split("\n")
+
+        # => ["2回", "京都", "9日目", "サラ系３歳", "未勝利"]
+        _, race_place, _, _, race_class = race_data_2_0_texts[:5]
+        race_info[ResultColumn.RACE_PLACE] = race_place
+        race_info[ResultColumn.RACE_CLASS] = race_class
 
     return dict(**race_info)
 
