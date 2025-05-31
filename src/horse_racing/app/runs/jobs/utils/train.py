@@ -8,6 +8,7 @@ from typing import Literal, Any
 import polars as pl
 
 from horse_racing.core.gcp.storage import StorageClient
+from horse_racing.core.logging import logger
 from horse_racing.infrastructure.netkeiba.race_result import RaceResultNetkeibaRepository
 from horse_racing.usecase.race_result import (
     RaceResultUsecase,
@@ -99,11 +100,11 @@ def _agg_jockey(df: pl.DataFrame) -> pl.DataFrame:
     )
 
     # win: 単勝
+    logger.info("Calculating jockey win count and rate...")
+    win_rank_condition = pl.col(ResultColumn.RANK) == 1
+
     jockey_win_count_df = jockey_base_df.group_by(ResultColumn.JOCKEY_ID).agg(
-        pl.col(ResultColumn.RANK)
-        .filter(pl.col(ResultColumn.RANK) == 1)
-        .count()
-        .alias(f"{ResultColumn.JOCKEY_ID}_win_count")
+        pl.col(ResultColumn.RANK).filter(win_rank_condition).count().alias(f"{ResultColumn.JOCKEY_ID}_win_count")
     )
     jockey_win_rate_df = jockey_race_count_df.join(jockey_win_count_df, on=ResultColumn.JOCKEY_ID, how="left").select(
         pl.col(ResultColumn.JOCKEY_ID),
@@ -112,13 +113,114 @@ def _agg_jockey(df: pl.DataFrame) -> pl.DataFrame:
         ),
     )
 
+    # win - field_type
+    jockey_win_field_type_df = jockey_base_df.join(
+        df.select([pl.col(ResultColumn.JOCKEY_ID), pl.col(ResultColumn.FIELD_TYPE)]),
+        on=ResultColumn.JOCKEY_ID,
+        how="left",
+    )
+
+    jockey_win_count_field_type_df = (
+        jockey_win_field_type_df.group_by([ResultColumn.JOCKEY_ID, ResultColumn.FIELD_TYPE])
+        .agg(
+            pl.col(ResultColumn.RANK)
+            .filter(win_rank_condition)
+            .count()
+            .alias(f"{ResultColumn.JOCKEY_ID}_win_count_field_type")
+        )
+        .select(
+            pl.col(ResultColumn.JOCKEY_ID),
+            pl.col(f"{ResultColumn.JOCKEY_ID}_win_count_field_type"),
+        )
+    )
+
+    jockey_win_rate_field_type_df = (
+        jockey_win_field_type_df.group_by([ResultColumn.JOCKEY_ID, ResultColumn.FIELD_TYPE])
+        .agg(
+            (pl.col(ResultColumn.RANK).filter(win_rank_condition).count() / pl.col(ResultColumn.RANK).count()).alias(
+                f"{ResultColumn.JOCKEY_ID}_win_rate_field_type"
+            )
+        )
+        .select(
+            pl.col(ResultColumn.JOCKEY_ID),
+            pl.col(f"{ResultColumn.JOCKEY_ID}_win_rate_field_type"),
+        )
+    )
+
+    # win - distance
+    jockey_win_distance_df = jockey_base_df.join(
+        df.select([pl.col(ResultColumn.JOCKEY_ID), pl.col(ResultColumn.DISTANCE)]),
+        on=ResultColumn.JOCKEY_ID,
+        how="left",
+    )
+
+    jockey_win_count_distance_df = (
+        jockey_win_distance_df.group_by([ResultColumn.JOCKEY_ID, ResultColumn.DISTANCE])
+        .agg(
+            pl.col(ResultColumn.RANK)
+            .filter(win_rank_condition)
+            .count()
+            .alias(f"{ResultColumn.JOCKEY_ID}_win_count_distance")
+        )
+        .select(
+            pl.col(ResultColumn.JOCKEY_ID),
+            pl.col(f"{ResultColumn.JOCKEY_ID}_win_count_distance"),
+        )
+    )
+
+    jockey_win_rate_distance_df = (
+        jockey_win_distance_df.group_by([ResultColumn.JOCKEY_ID, ResultColumn.DISTANCE])
+        .agg(
+            (pl.col(ResultColumn.RANK).filter(win_rank_condition).count() / pl.col(ResultColumn.RANK).count()).alias(
+                f"{ResultColumn.JOCKEY_ID}_win_rate_distance"
+            )
+        )
+        .select(
+            pl.col(ResultColumn.JOCKEY_ID),
+            pl.col(f"{ResultColumn.JOCKEY_ID}_win_rate_distance"),
+        )
+    )
+
+    # win - race_place
+    jockey_win_race_place_df = jockey_base_df.join(
+        df.select([pl.col(ResultColumn.JOCKEY_ID), pl.col(ResultColumn.RACE_PLACE)]),
+        on=ResultColumn.JOCKEY_ID,
+        how="left",
+    )
+
+    jockey_win_count_race_place_df = (
+        jockey_win_race_place_df.group_by([ResultColumn.JOCKEY_ID, ResultColumn.RACE_PLACE])
+        .agg(
+            pl.col(ResultColumn.RANK)
+            .filter(win_rank_condition)
+            .count()
+            .alias(f"{ResultColumn.JOCKEY_ID}_win_count_race_place")
+        )
+        .select(
+            pl.col(ResultColumn.JOCKEY_ID),
+            pl.col(f"{ResultColumn.JOCKEY_ID}_win_count_race_place"),
+        )
+    )
+
+    jockey_win_rate_race_place_df = (
+        jockey_win_race_place_df.group_by([ResultColumn.JOCKEY_ID, ResultColumn.RACE_PLACE])
+        .agg(
+            (pl.col(ResultColumn.RANK).filter(win_rank_condition).count() / pl.col(ResultColumn.RANK).count()).alias(
+                f"{ResultColumn.JOCKEY_ID}_win_rate_race_place"
+            )
+        )
+        .select(
+            pl.col(ResultColumn.JOCKEY_ID),
+            pl.col(f"{ResultColumn.JOCKEY_ID}_win_rate_race_place"),
+        )
+    )
+
     # show: 複勝
+    logger.info("Calculating jockey show count and rate...")
+    show_rank_condition = (pl.col(ResultColumn.RANK) >= 1) & (pl.col(ResultColumn.RANK) <= 3)
+
     jockey_show_count_df = jockey_base_df.group_by(ResultColumn.JOCKEY_ID).agg(
-        pl.col(ResultColumn.RANK)
-        .filter(pl.col(ResultColumn.RANK) >= 1)
-        .filter(pl.col(ResultColumn.RANK) <= 3)
-        .count()
-        .alias(f"{ResultColumn.JOCKEY_ID}_show_count")
+        pl.col(ResultColumn.RANK).filter(show_rank_condition).count().alias(f"{ResultColumn.JOCKEY_ID}_show_count")
     )
     jockey_show_rate_df = jockey_race_count_df.join(jockey_show_count_df, on=ResultColumn.JOCKEY_ID, how="left").select(
         pl.col(ResultColumn.JOCKEY_ID),
@@ -127,10 +229,124 @@ def _agg_jockey(df: pl.DataFrame) -> pl.DataFrame:
         ),
     )
 
+    # show - field_type
+    jockey_show_field_type_df = jockey_base_df.join(
+        df.select([pl.col(ResultColumn.JOCKEY_ID), pl.col(ResultColumn.FIELD_TYPE)]),
+        on=ResultColumn.JOCKEY_ID,
+        how="left",
+    )
+
+    jockey_show_count_field_type_df = (
+        jockey_show_field_type_df.group_by([ResultColumn.JOCKEY_ID, ResultColumn.FIELD_TYPE])
+        .agg(
+            pl.col(ResultColumn.RANK)
+            .filter(show_rank_condition)
+            .count()
+            .alias(f"{ResultColumn.JOCKEY_ID}_show_count_field_type")
+        )
+        .select(
+            pl.col(ResultColumn.JOCKEY_ID),
+            pl.col(f"{ResultColumn.JOCKEY_ID}_show_count_field_type"),
+        )
+    )
+
+    jockey_show_rate_field_type_df = (
+        jockey_show_field_type_df.group_by([ResultColumn.JOCKEY_ID, ResultColumn.FIELD_TYPE])
+        .agg(
+            (pl.col(ResultColumn.RANK).filter(show_rank_condition).count() / pl.col(ResultColumn.RANK).count()).alias(
+                f"{ResultColumn.JOCKEY_ID}_show_rate_field_type"
+            )
+        )
+        .select(
+            pl.col(ResultColumn.JOCKEY_ID),
+            pl.col(f"{ResultColumn.JOCKEY_ID}_show_rate_field_type"),
+        )
+    )
+
+    # show - distance
+    jockey_show_distance_df = jockey_base_df.join(
+        df.select([pl.col(ResultColumn.JOCKEY_ID), pl.col(ResultColumn.DISTANCE)]),
+        on=ResultColumn.JOCKEY_ID,
+        how="left",
+    )
+
+    jockey_show_count_distance_df = (
+        jockey_show_distance_df.group_by([ResultColumn.JOCKEY_ID, ResultColumn.DISTANCE])
+        .agg(
+            pl.col(ResultColumn.RANK)
+            .filter(show_rank_condition)
+            .count()
+            .alias(f"{ResultColumn.JOCKEY_ID}_show_count_distance")
+        )
+        .select(
+            pl.col(ResultColumn.JOCKEY_ID),
+            pl.col(f"{ResultColumn.JOCKEY_ID}_show_count_distance"),
+        )
+    )
+
+    jockey_show_rate_distance_df = (
+        jockey_show_distance_df.group_by([ResultColumn.JOCKEY_ID, ResultColumn.DISTANCE])
+        .agg(
+            (pl.col(ResultColumn.RANK).filter(show_rank_condition).count() / pl.col(ResultColumn.RANK).count()).alias(
+                f"{ResultColumn.JOCKEY_ID}_show_rate_distance"
+            )
+        )
+        .select(
+            pl.col(ResultColumn.JOCKEY_ID),
+            pl.col(f"{ResultColumn.JOCKEY_ID}_show_rate_distance"),
+        )
+    )
+
+    # show - race_place
+    jockey_show_race_place_df = jockey_base_df.join(
+        df.select([pl.col(ResultColumn.JOCKEY_ID), pl.col(ResultColumn.RACE_PLACE)]),
+        on=ResultColumn.JOCKEY_ID,
+        how="left",
+    )
+
+    jockey_show_count_race_place_df = (
+        jockey_show_race_place_df.group_by([ResultColumn.JOCKEY_ID, ResultColumn.RACE_PLACE])
+        .agg(
+            pl.col(ResultColumn.RANK)
+            .filter(show_rank_condition)
+            .count()
+            .alias(f"{ResultColumn.JOCKEY_ID}_show_count_race_place")
+        )
+        .select(
+            pl.col(ResultColumn.JOCKEY_ID),
+            pl.col(f"{ResultColumn.JOCKEY_ID}_show_count_race_place"),
+        )
+    )
+
+    jockey_show_rate_race_place_df = (
+        jockey_show_race_place_df.group_by([ResultColumn.JOCKEY_ID, ResultColumn.RACE_PLACE])
+        .agg(
+            (pl.col(ResultColumn.RANK).filter(show_rank_condition).count() / pl.col(ResultColumn.RANK).count()).alias(
+                f"{ResultColumn.JOCKEY_ID}_show_rate_race_place"
+            )
+        )
+        .select(
+            pl.col(ResultColumn.JOCKEY_ID),
+            pl.col(f"{ResultColumn.JOCKEY_ID}_show_rate_race_place"),
+        )
+    )
+
     return (
         jockey_win_count_df.join(jockey_win_rate_df, on=ResultColumn.JOCKEY_ID, how="left")
+        .join(jockey_win_count_field_type_df, on=ResultColumn.JOCKEY_ID, how="left")
+        .join(jockey_win_rate_field_type_df, on=ResultColumn.JOCKEY_ID, how="left")
+        .join(jockey_win_count_distance_df, on=ResultColumn.JOCKEY_ID, how="left")
+        .join(jockey_win_rate_distance_df, on=ResultColumn.JOCKEY_ID, how="left")
+        .join(jockey_win_count_race_place_df, on=ResultColumn.JOCKEY_ID, how="left")
+        .join(jockey_win_rate_race_place_df, on=ResultColumn.JOCKEY_ID, how="left")
         .join(jockey_show_count_df, on=ResultColumn.JOCKEY_ID, how="left")
         .join(jockey_show_rate_df, on=ResultColumn.JOCKEY_ID, how="left")
+        .join(jockey_show_count_field_type_df, on=ResultColumn.JOCKEY_ID, how="left")
+        .join(jockey_show_rate_field_type_df, on=ResultColumn.JOCKEY_ID, how="left")
+        .join(jockey_show_count_distance_df, on=ResultColumn.JOCKEY_ID, how="left")
+        .join(jockey_show_rate_distance_df, on=ResultColumn.JOCKEY_ID, how="left")
+        .join(jockey_show_count_race_place_df, on=ResultColumn.JOCKEY_ID, how="left")
+        .join(jockey_show_rate_race_place_df, on=ResultColumn.JOCKEY_ID, how="left")
     )
 
 
@@ -147,11 +363,13 @@ def preprocess(
     select_exprs = [
         pl.col(ResultColumn.HORSE_NUMBER).cast(pl.Int32),
         pl.col(ResultColumn.FRAME).cast(pl.Int32),
-        pl.col(GENDER_AGE_COLUMN).alias(ResultColumn.GENDER),
+        pl.col(GENDER_AGE_COLUMN).alias(ResultColumn.GENDER),  # 後ほどextractされる
         pl.col(GENDER_AGE_COLUMN).str.extract(r"(\d+)").cast(pl.Int32).alias(ResultColumn.AGE),
         pl.col(ResultColumn.TOTAL_WEIGHT).cast(pl.Float64).alias(ResultColumn.TOTAL_WEIGHT),
         # race
         pl.col(ResultColumn.RACE_NUMBER).str.extract(r"(\d+)").cast(pl.Int32).alias(ResultColumn.RACE_NUMBER),
+        pl.col(ResultColumn.RACE_PLACE).cast(pl.String),
+        pl.col(ResultColumn.RACE_CLASS).cast(pl.String),
         pl.col(ResultColumn.START_AT).str.extract(r"^(\d+)").cast(pl.Int32).alias(ResultColumn.START_AT),
         pl.col(ResultColumn.DISTANCE).str.extract(r"(\d+)").cast(pl.Int32).alias(ResultColumn.DISTANCE),
         pl.col(ResultColumn.DISTANCE).alias(ResultColumn.ROTATE),
@@ -201,7 +419,13 @@ def preprocess(
     df = df.with_columns(
         [
             pl.col(c).cast(pl.Categorical).alias(f"{c}_cat")
-            for c in (ResultColumn.HORSE_ID, ResultColumn.JOCKEY_ID, ResultColumn.TRAINER_ID)
+            for c in (
+                ResultColumn.HORSE_ID,
+                ResultColumn.JOCKEY_ID,
+                ResultColumn.TRAINER_ID,
+                ResultColumn.RACE_PLACE,
+                ResultColumn.RACE_CLASS,
+            )
         ]
     )
 
