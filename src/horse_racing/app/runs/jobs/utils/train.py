@@ -278,13 +278,14 @@ def preprocess(
     raw_df: pl.DataFrame,
     feature_columns: list[str],
     weight_diff_avg_df: pl.DataFrame | None = None,
+    horse_df: pl.DataFrame | None = None,
     jockey_df: pl.DataFrame | None = None,
     mode: Literal["train", "predict"] = "train",
 ) -> dict[str, pl.DataFrame]:
+    # filter race
     df = _remove_debut_race(raw_df)
     df = df.drop("race_name")
 
-    # filter race
     select_exprs = [
         pl.col(ResultColumn.HORSE_NUMBER).cast(pl.Int32),
         pl.col(ResultColumn.FRAME).cast(pl.Int32),
@@ -312,9 +313,6 @@ def preprocess(
         pl.col(ResultColumn.JOCKEY_ID),
         pl.col(ResultColumn.TRAINER_ID),
     ]
-    if mode == "train":
-        df = df.filter(~pl.col(ResultColumn.RANK).is_in({"中止", "除外", "取消"}))
-        select_exprs.append(pl.col(ResultColumn.RANK).cast(pl.Int32))
     if ResultColumn.HORSE_WEIGHT_DIFF_DEV in feature_columns:
         select_exprs.append(
             pl.col(HORSE_WEIGHT_AND_DIFF_COLUMN)
@@ -322,7 +320,28 @@ def preprocess(
             .cast(pl.Int32)
             .alias(ResultColumn.HORSE_WEIGHT_DIFF)
         )
-    df = df.select(select_exprs)
+
+    if mode == "train":
+        # target label
+        df = df.filter(~pl.col(ResultColumn.RANK).is_in({"中止", "除外", "取消"}))
+        select_exprs.append(pl.col(ResultColumn.RANK).cast(pl.Int32))
+
+        (pl.col(ResultColumn.CORNER_RANK).cast(pl.String).alias(f"raw_{ResultColumn.CORNER_RANK}"),)
+
+        df = df.select(select_exprs)
+
+        # corner rank
+        df = df.with_columns(pl.col(f"raw_{ResultColumn.CORNER_RANK}").str.split("-").alias("corner_ranks"))
+        df = df.with_columns(
+            [
+                pl.col("corner_ranks").list.get(i, null_on_oob=True).cast(pl.Int32).alias(f"corner_rank_{i+1}")
+                for i in range(4)
+            ]
+        )
+        corner_rank_columns = [f"corner_rank_{i+1}" for i in range(4)]
+        df = df.drop("corner_ranks", pl.col(f"raw_{ResultColumn.CORNER_RANK}"))
+    else:
+        df = df.select(select_exprs)
 
     # label encoding
     gender_label_dict = {"牝": 0, "牡": 1, "セ": 2}
@@ -364,27 +383,79 @@ def preprocess(
             raise ValueError("mode is not train, but jockey_df is not provided")
     df = df.join(jockey_df, on=ResultColumn.JOCKEY_ID, how="left")
 
+    if horse_df is None:
+        if mode == "train":
+            logger.info("Preprocessing horse features...")
+
+            # last race features
+            last_race_feature_columns = [
+                # ResultColumn.GOAL_TIME,
+                # ResultColumn.LAST_3F_TIME,
+                *corner_rank_columns,
+            ]
+            last_race_df = df.select(
+                pl.col(ResultColumn.HORSE_ID),
+                pl.col(ResultColumn.RACE_ID),
+                pl.col(ResultColumn.RACE_ID).shift(1).over(ResultColumn.HORSE_ID).alias("last_race_id"),
+                *(pl.col(c).shift(1).over(ResultColumn.HORSE_ID).alias(f"last_{c}") for c in last_race_feature_columns),
+            )
+            df = df.join(last_race_df, on=[ResultColumn.HORSE_ID, ResultColumn.RACE_ID], how="left")
+
+            # latest
+            latest_race_df = df.select(
+                pl.col(ResultColumn.HORSE_ID),
+                pl.col(ResultColumn.RACE_ID)
+                .filter(pl.col(ResultColumn.RACE_DATE).max().over(ResultColumn.HORSE_ID))
+                .alias("last_race_id"),
+                *(
+                    pl.col(c)
+                    .filter(pl.col(ResultColumn.RACE_DATE).max().over(ResultColumn.HORSE_ID))
+                    .alias(f"last_{c}")
+                    for c in last_race_feature_columns
+                ),
+            )
+            latest_race_df = latest_race_df.unique(subset=[ResultColumn.HORSE_ID])
+            if horse_df is None:
+                horse_df = latest_race_df.clone()
+            else:
+                horse_df = horse_df.join(latest_race_df, on=ResultColumn.HORSE_ID, how="outer")
+        else:
+            # raise ValueError("mode is not train, but horse_df is not provided")
+            pass  # TODO
+    # df = df.join(horse_df, on=ResultColumn.HORSE_ID, how="left")
+
     # weight dev
     logger.info("Preprocessing horse weight difference average...")
     if ResultColumn.HORSE_WEIGHT_DIFF_DEV in feature_columns and weight_diff_avg_df is None:
         if mode == "train":
-            weight_diff_avg_df = df.group_by("horse_id").agg(
+            weight_diff_avg_df = df.group_by(ResultColumn.HORSE_ID).agg(
                 pl.mean(ResultColumn.HORSE_WEIGHT_DIFF).alias("weight_diff_avg")
             )
         else:
             raise ValueError("mode is not train, but weight_diff_avg_df is None")
 
     if weight_diff_avg_df is not None:
-        df = df.join(weight_diff_avg_df, on="horse_id", how="left")
+        df = df.join(weight_diff_avg_df, on=ResultColumn.HORSE_ID, how="left")
         df = df.with_columns(
             (pl.col(ResultColumn.HORSE_WEIGHT_DIFF) - pl.col("weight_diff_avg")).alias(
                 ResultColumn.HORSE_WEIGHT_DIFF_DEV
             )
         )
 
+        if horse_df is None:
+            horse_df = weight_diff_avg_df.clone()
+        else:
+            horse_df = horse_df.join(weight_diff_avg_df, on=ResultColumn.HORSE_ID, how="outer")
+
+    if horse_df is not None:
+        horse_df = horse_df.unique(subset=[ResultColumn.HORSE_ID])
+    if jockey_df is not None:
+        jockey_df = jockey_df.unique(subset=[ResultColumn.JOCKEY_ID])
+
     return {
         "feature": df,
         "weight_diff_avg": weight_diff_avg_df,
+        "horse": horse_df,
         "jockey": jockey_df,
     }
 
