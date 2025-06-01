@@ -676,6 +676,7 @@ def upload_model(
     best_params: dict[str, Any],
     feature_columns: list[str],
     metric: dict[str, float],
+    importance: dict[str, dict[str, float]],
     tmp_dir: Path,
     storage_client: StorageClient,
     model_name: str,
@@ -693,6 +694,7 @@ def upload_model(
         json.dump(best_params, fp)
     bucket.blob(f"{prefix}/params.json").upload_from_filename(str(param_path))
 
+    # upload features list
     feature_columns_path = tmp_dir / "feature_columns.json"
     with open(feature_columns_path, "w") as fp:
         json.dump(feature_columns, fp)
@@ -702,3 +704,9 @@ def upload_model(
     with open(metric_path, "w") as fp:
         json.dump(metric, fp)
     bucket.blob(f"{prefix}/metrics.json").upload_from_filename(str(metric_path))
+
+    # upload importance
+    importance_path = tmp_dir / "importance.json"
+    with open(importance_path, "w") as fp:
+        json.dump(importance, fp)
+    bucket.blob(f"{prefix}/importance.json").upload_from_filename(str(importance_path))

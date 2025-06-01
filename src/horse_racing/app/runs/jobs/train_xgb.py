@@ -1,4 +1,5 @@
 from argparse import ArgumentParser
+from dataclasses import dataclass
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Literal, Any
@@ -21,12 +22,19 @@ from horse_racing.core.logging import logger
 from horse_racing.usecase.race_result import ResultColumn
 
 
+@dataclass
+class TrainResult:
+    model: xgb.Booster
+    metric: dict[str, float]
+    importance: dict[str, dict[str, float]]
+
+
 def train(
     params: dict[str, Any],
     train_df: pl.DataFrame,
     valid_df: pl.DataFrame,
     feature_columns: list[str],
-) -> tuple[xgb.Booster, dict[str, float]]:
+) -> TrainResult:
     train_feature_df = train_df.select(feature_columns)
     train_label = (train_df[ResultColumn.RANK] == "1").cast(int).to_numpy()
     valid_feature_df = valid_df.select(feature_columns)
@@ -46,7 +54,15 @@ def train(
     y_pred = model.predict(ds_valid)
     y_true = ds_valid.get_label()
     auc = roc_auc_score(y_true=y_true, y_score=y_pred)
-    return model, {"auc": auc}
+
+    importance_types = ("weight", "gain", "cover")
+    importance_dict = {it: model.get_score(importance_type=it) for it in importance_types}
+
+    return TrainResult(
+        model=model,
+        metric={"valid_auc": auc},
+        importance=importance_dict,
+    )
 
 
 def tune_hyper_params(
@@ -81,8 +97,8 @@ def tune_hyper_params(
         for k, (fn_name, kw) in param_settings.items():
             params[k] = suggest_fn_dict[fn_name](k, **kw)
 
-        _, metric = train(params=params, train_df=train_df, valid_df=valid_df, feature_columns=feature_columns)
-        return metric[metric_key]
+        train_result = train(params=params, train_df=train_df, valid_df=valid_df, feature_columns=feature_columns)
+        return train_result.metric[metric_key]
 
     study = optuna.create_study(direction=direction)
     study.optimize(objective, n_trials=n_trials)
@@ -119,7 +135,7 @@ def main() -> None:
         logger.info(f"raw_df: {raw_df.shape}, {raw_df.columns}")
 
     # preprocess
-    data = preprocess(raw_df=raw_df)
+    data = preprocess(raw_df=raw_df, feature_columns=args.feature_columns)
     upload_data(data=data, storage_client=storage_client, version=args.data_version)
     processed_df = data["feature"]
 
@@ -141,28 +157,24 @@ def main() -> None:
     )
 
     # train
-    model, metric = train(
+    train_result = train(
         params=best_params,
         train_df=train_df,
         valid_df=valid_df,
         feature_columns=args.feature_columns,
     )
 
-    # logging feature importance
-    importance_type = "weight"
-    importance_dict = model.get_score(importance_type=importance_type)
-    logger.info(f"feature importance ({importance_type}): {importance_dict}")
-
     # save model
     with TemporaryDirectory() as tmp_dir_str:
         tmp_dir = Path(tmp_dir_str)
         model_path = tmp_dir / "model.txt"
-        model.save_model(str(model_path))
+        train_result.model.save_model(str(model_path))
         upload_model(
             model_path=model_path,
             best_params=best_params,
-            metric=metric,
-            feature_colums=args.feature_columns,
+            metric=train_result.metric,
+            feature_columns=args.feature_columns,
+            importance=train_result.importance,
             tmp_dir=tmp_dir,
             storage_client=storage_client,
             model_name=args.model,
