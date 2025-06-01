@@ -26,6 +26,7 @@ class ResultColumn:
     HORSE_WEIGHT_DIFF: str = "horse_weight_diff"
     HORSE_WEIGHT_DIFF_DEV: str = "horse_weight_diff_dev"
     GOAL_TIME: str = "goal_time"
+    GOAL_SPEED: str = "goal_speed"
     GOAL_DIFF: str = "goal_diff"
     POPULAR: str = "popular"
     ODDS: str = "odds"

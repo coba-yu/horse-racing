@@ -479,6 +479,7 @@ def preprocess(
         df = df.filter(~pl.col(ResultColumn.RANK).is_in({"中止", "除外", "取消"}))
         select_exprs.append(pl.col(ResultColumn.RANK).cast(pl.Int32))
         select_exprs.append(pl.col(ResultColumn.GOAL_TIME).cast(pl.String).alias(ResultColumn.GOAL_TIME))
+        select_exprs.append(pl.col(ResultColumn.LAST_3F_TIME).cast(pl.Float64).alias(ResultColumn.LAST_3F_TIME))
         select_exprs.append(pl.col(ResultColumn.CORNER_RANK).cast(pl.String).alias(f"raw_{ResultColumn.CORNER_RANK}"))
 
         df = df.select(select_exprs)
@@ -499,6 +500,9 @@ def preprocess(
             (pl.col(f"{ResultColumn.GOAL_TIME}_minute") * 60.0 + pl.col(f"{ResultColumn.GOAL_TIME}_second")).alias(
                 ResultColumn.GOAL_TIME
             )
+        )
+        df = df.with_columns(
+            (pl.col(ResultColumn.DISTANCE) / pl.col(ResultColumn.GOAL_TIME)).alias(ResultColumn.GOAL_SPEED)
         )
         df = df.drop(f"{ResultColumn.GOAL_TIME}_minute", f"{ResultColumn.GOAL_TIME}_second")
 
@@ -562,16 +566,28 @@ def preprocess(
             df = df.join(horse_df, on=ResultColumn.HORSE_ID, how="left")
 
             # last race features
-            last_race_feature_columns = [
-                # ResultColumn.GOAL_TIME,
-                # ResultColumn.LAST_3F_TIME,
+            only_last_race_feature_columns = [
+                ResultColumn.GOAL_TIME,
+                ResultColumn.GOAL_SPEED,
+                ResultColumn.LAST_3F_TIME,
                 *corner_rank_columns,
+            ]
+            last_race_feature_columns = [
+                ResultColumn.RANK,
+                ResultColumn.DISTANCE,
+                *only_last_race_feature_columns,
             ]
             last_race_df = df.select(
                 pl.col(ResultColumn.HORSE_ID),
                 pl.col(ResultColumn.RACE_ID),
-                pl.col(ResultColumn.RACE_ID).shift(1).over(ResultColumn.HORSE_ID).alias("last_race_id"),
-                *(pl.col(c).shift(1).over(ResultColumn.HORSE_ID).alias(f"last_{c}") for c in last_race_feature_columns),
+                pl.col(ResultColumn.RACE_ID)
+                .shift(1)
+                .over(ResultColumn.HORSE_ID, order_by=ResultColumn.RACE_DATE)
+                .alias("last_race_id"),
+                *(
+                    pl.col(c).shift(1).over(ResultColumn.HORSE_ID, order_by=ResultColumn.RACE_DATE).alias(f"last_{c}")
+                    for c in last_race_feature_columns
+                ),
             )
             df = df.join(last_race_df, on=[ResultColumn.HORSE_ID, ResultColumn.RACE_ID], how="left")
 
@@ -585,6 +601,9 @@ def preprocess(
                 )
             )
             horse_df = horse_df.join(latest_race_df, on=ResultColumn.HORSE_ID, how="outer")
+
+            current_race_feature_columns = [c for c in only_last_race_feature_columns if c in df.columns]
+            df = df.drop(current_race_feature_columns)
         else:
             # TODO
             # raise ValueError("mode is not train, but horse_df is not provided")
