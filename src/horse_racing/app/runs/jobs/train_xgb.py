@@ -72,19 +72,25 @@ def tune_hyper_params(
     metric_key: str,
     n_trials: int,
     direction: Literal["maximize", "minimize"],
+    booster_type: Literal["gbtree", "dart", "gblinear"] = "gbtree",
 ) -> dict[str, Any]:
     const_params = {
         "objective": "binary:logistic",
+        "booster": booster_type,
         "eval_metric": "auc",
         "tree_method": "hist",
     }
     param_settings = {
-        "eta": ("suggest_float", {"low": 1e-3, "high": 0.3, "log": True}),
-        "max_depth": ("suggest_int", {"low": 3, "high": 10}),
-        "subsample": ("suggest_float", {"low": 0.5, "high": 1.0}),
-        "colsample_bytree": ("suggest_float", {"low": 0.5, "high": 1.0}),
+        "n_estimators": ("suggest_int", {"low": 200, "high": 1000, "step": 50}),
+        "eta": ("suggest_float", {"low": 1e-2, "high": 0.2, "log": True}),
+        "max_depth": ("suggest_int", {"low": 3, "high": 8}),
+        # overfitを防ぐために小さめに設定
+        "subsample": ("suggest_float", {"low": 0.5, "high": 0.8, "step": 0.1}),
+        # overfitを防ぐために小さめに設定
+        "colsample_bytree": ("suggest_float", {"low": 0.5, "high": 0.8, "step": 0.1}),
+        "gamma": ("suggest_int", {"low": 0, "high": 5}),
         "reg_alpha": ("suggest_float", {"low": 1e-8, "high": 10.0, "log": True}),
-        "reg_lambda": ("suggest_float", {"low": 1e-8, "high": 10.0, "log": True}),
+        "reg_lambda": ("suggest_float", {"low": 1.0, "high": 100.0, "log": True}),
     }
 
     def objective(trial: optuna.Trial) -> float:
@@ -102,7 +108,7 @@ def tune_hyper_params(
 
     study = optuna.create_study(direction=direction)
     study.optimize(objective, n_trials=n_trials)
-    return dict(**study.best_params)
+    return dict(**const_params, **study.best_params)
 
 
 def main() -> None:
