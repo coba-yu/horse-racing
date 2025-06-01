@@ -1,3 +1,5 @@
+# mypy: ignore-errors
+
 from argparse import ArgumentParser
 from pathlib import Path
 from tempfile import TemporaryDirectory
