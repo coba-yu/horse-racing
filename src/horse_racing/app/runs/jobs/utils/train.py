@@ -304,12 +304,6 @@ def preprocess(
         # fresh
         pl.col(ResultColumn.POPULAR).cast(pl.Int32).alias(ResultColumn.POPULAR),
         pl.col(ResultColumn.ODDS).cast(pl.Float32).alias(ResultColumn.ODDS),  # TODO: use predicted odds
-        (
-            pl.col(HORSE_WEIGHT_AND_DIFF_COLUMN)
-            .str.extract(r"\(([-\+\d]+)\)")
-            .cast(pl.Int32)
-            .alias(ResultColumn.HORSE_WEIGHT_DIFF)
-        ),
         # not feature
         pl.col(ResultColumn.RACE_ID),
         pl.col(ResultColumn.RACE_DATE),
@@ -321,6 +315,13 @@ def preprocess(
     if mode == "train":
         df = df.filter(~pl.col(ResultColumn.RANK).is_in({"中止", "除外", "取消"}))
         select_exprs.append(pl.col(ResultColumn.RANK).cast(pl.Int32))
+    if ResultColumn.HORSE_WEIGHT_DIFF_DEV in feature_columns:
+        select_exprs.append(
+            pl.col(HORSE_WEIGHT_AND_DIFF_COLUMN)
+            .str.extract(r"\(([-\+\d]+)\)")
+            .cast(pl.Int32)
+            .alias(ResultColumn.HORSE_WEIGHT_DIFF)
+        )
     df = df.select(select_exprs)
 
     # label encoding
@@ -365,14 +366,15 @@ def preprocess(
 
     # weight dev
     logger.info("Preprocessing horse weight difference average...")
-    if mode == "train":
-        weight_diff_avg_df = df.group_by("horse_id").agg(
-            pl.mean(ResultColumn.HORSE_WEIGHT_DIFF).alias("weight_diff_avg")
-        )
-    else:
-        if ResultColumn.HORSE_WEIGHT_DIFF_DEV in feature_columns and weight_diff_avg_df is None:
+    if ResultColumn.HORSE_WEIGHT_DIFF_DEV in feature_columns and weight_diff_avg_df is None:
+        if mode == "train":
+            weight_diff_avg_df = df.group_by("horse_id").agg(
+                pl.mean(ResultColumn.HORSE_WEIGHT_DIFF).alias("weight_diff_avg")
+            )
+        else:
             raise ValueError("mode is not train, but weight_diff_avg_df is None")
 
+    if weight_diff_avg_df is not None:
         df = df.join(weight_diff_avg_df, on="horse_id", how="left")
         df = df.with_columns(
             (pl.col(ResultColumn.HORSE_WEIGHT_DIFF) - pl.col("weight_diff_avg")).alias(
