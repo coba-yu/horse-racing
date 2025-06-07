@@ -22,22 +22,12 @@ FIELD_TYPES = (
     1,  # "ダ"
     2,  # "障害"
 )
-DISTANCES = (
-    1000,
-    1150,
-    1200,
-    1300,
-    1400,
-    1500,
-    1600,
-    1700,
-    1800,
-    1900,
-    2000,
-    2100,
-    2200,
-    2400,
-    2600,
+DISTANCE_CLASSES = (
+    "splint",
+    "mile",
+    "middle",
+    "middle_to_long",
+    "long",
 )
 RACE_PLACES = (
     "福島",
@@ -108,6 +98,23 @@ def collect_data(
     return result_usecase.get(version=version, first_date=first_date, last_date=last_date)
 
 
+def _remove_debut_race(df: pl.DataFrame) -> pl.DataFrame:
+    df = df.filter(~pl.col("race_name").str.contains("新馬"))
+    return df
+
+
+def _convert_distance_to_class(distance: int) -> str:
+    if distance < 1400:
+        return "splint"
+    if distance <= 1800:
+        return "mile"
+    if distance <= 2200:
+        return "middle"
+    if distance <= 2800:
+        return "middle_to_long"
+    return "long"
+
+
 def _label_encode(df: pl.DataFrame, column: str, label_dict: dict[str, int]) -> pl.DataFrame:
     return df.with_columns(
         pl.col(column)
@@ -115,11 +122,6 @@ def _label_encode(df: pl.DataFrame, column: str, label_dict: dict[str, int]) -> 
         .replace_strict(label_dict, default=-1)
         .cast(pl.Int8)
     )
-
-
-def _remove_debut_race(df: pl.DataFrame) -> pl.DataFrame:
-    df = df.filter(~pl.col("race_name").str.contains("新馬"))
-    return df
 
 
 def _calculate_grouped_stats(
@@ -211,23 +213,23 @@ def _calculate_distance_stats(
     result_df: pl.DataFrame,
 ) -> pl.DataFrame:
     """Calculate distance specific statistics"""
-    for distance in DISTANCES:
+    for distance_class in DISTANCE_CLASSES:
         prefix = f"{id_column}_{ticket_type}"
-        actual_distances = base_df[ResultColumn.DISTANCE].unique().to_list()
+        actual_distance_classes = base_df[ResultColumn.DISTANCE_CLASS].unique().to_list()
 
-        if distance in actual_distances:
+        if distance_class in actual_distance_classes:
             distance_stat_df = _calculate_grouped_stats(
                 base_df,
-                group_column=ResultColumn.DISTANCE,
-                group_value=distance,
+                group_column=ResultColumn.DISTANCE_CLASS,
+                group_value=distance_class,
                 rank_condition=rank_condition,
                 prefix=prefix,
                 id_column=id_column,
             )
             result_df = result_df.join(distance_stat_df, on=id_column, how="left")
         else:
-            logger.info("%s not exists in %s and fill with null", distance, actual_distances)
-            result_df[f"{prefix}_{distance}_count"] = None
+            logger.info("%s not exists in %s and fill with null", distance_class, actual_distance_classes)
+            result_df[f"{prefix}_{distance_class}_count"] = None
 
     return result_df
 
@@ -296,7 +298,7 @@ def _agg_horse(df: pl.DataFrame) -> pl.DataFrame:
         [
             pl.col(ResultColumn.RANK).cast(pl.Int32),
             pl.col(ResultColumn.HORSE_ID).cast(pl.String),
-            pl.col(ResultColumn.DISTANCE),
+            pl.col(ResultColumn.DISTANCE_CLASS),
         ]
     )
 
@@ -388,7 +390,7 @@ def _agg_jockey(df: pl.DataFrame) -> pl.DataFrame:
             pl.col(ResultColumn.RANK).cast(pl.Int32),
             pl.col(ResultColumn.JOCKEY_ID).cast(pl.String),
             pl.col(ResultColumn.FIELD_TYPE),
-            pl.col(ResultColumn.DISTANCE),
+            pl.col(ResultColumn.DISTANCE_CLASS),
             pl.col(ResultColumn.RACE_PLACE),
         ]
     )
@@ -551,6 +553,9 @@ def preprocess(
     )
 
     # jockey target encoding
+    df = df.with_columns(
+        pl.col(ResultColumn.DISTANCE).map_elements(_convert_distance_to_class).alias(ResultColumn.DISTANCE_CLASS)
+    )
     if jockey_df is None:
         if mode == "train":
             logger.info("Preprocessing jockey features...")

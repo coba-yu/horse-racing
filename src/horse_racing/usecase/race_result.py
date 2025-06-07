@@ -40,6 +40,7 @@ class ResultColumn:
     RACE_CLASS: str = "race_class"
     START_AT: str = "start_at"
     DISTANCE: str = "distance"
+    DISTANCE_CLASS: str = "distance_class"
     ROTATE: str = "rotate"
     FIELD_TYPE: str = "field_type"
     WEATHER: str = "weather"
