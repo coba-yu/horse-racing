@@ -83,6 +83,12 @@ class TrainConfig:
         return self._feature_columns.split(",")
 
 
+class Target:
+    RANK_WIN: str = "rank_win"
+    RANK_SHOW: str = "rank_show"
+    ODDS: str = "odds"
+
+
 def collect_data(
     storage_client: StorageClient,
     version: str,

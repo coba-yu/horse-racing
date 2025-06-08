@@ -1,15 +1,18 @@
+import math
 from argparse import ArgumentParser
 from dataclasses import dataclass
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Literal, Any
 
+import numpy as np
 import optuna
 import polars as pl
 import xgboost as xgb
-from sklearn.metrics import roc_auc_score
+from sklearn.metrics import roc_auc_score, mean_squared_error
 
 from horse_racing.app.runs.jobs.utils.train import (
+    Target,
     split_train_data,
     preprocess,
     collect_data,
@@ -29,16 +32,45 @@ class TrainResult:
     importance: dict[str, dict[str, float]]
 
 
+def _get_target_rank_win(df: pl.DataFrame) -> np.ndarray:
+    return (df[ResultColumn.RANK] == "1").cast(int).to_numpy()
+
+
+def _get_target_rank_show(df: pl.DataFrame) -> np.ndarray:
+    return (
+        pl.when(pl.col(ResultColumn.RANK).is_in(["1", "2", "3"])).then(pl.col(ResultColumn.RANK).cast(int)).otherwise(0)
+    ).to_numpy()
+
+
+def _get_target_odds(df: pl.DataFrame) -> np.ndarray:
+    return (df[ResultColumn.ODDS]).cast(pl.Float64).to_numpy()
+
+
 def train(
     params: dict[str, Any],
     train_df: pl.DataFrame,
     valid_df: pl.DataFrame,
     feature_columns: list[str],
+    target: str = Target.RANK_WIN,
 ) -> TrainResult:
     train_feature_df = train_df.select(feature_columns)
-    train_label = (train_df[ResultColumn.RANK] == "1").cast(int).to_numpy()
     valid_feature_df = valid_df.select(feature_columns)
-    valid_label = (valid_df[ResultColumn.RANK] == "1").cast(int).to_numpy()
+
+    if target == Target.RANK_WIN:
+        params["objective"] = "binary:logistic"
+        train_label = _get_target_rank_win(train_df)
+        valid_label = _get_target_rank_win(valid_df)
+    elif target == Target.RANK_SHOW:
+        params["objective"] = "multi:softprob"
+        params["num_class"] = 4
+        train_label = _get_target_rank_show(train_df)
+        valid_label = _get_target_rank_show(valid_df)
+    elif target == Target.ODDS:
+        params["objective"] = "reg:squarederror"
+        train_label = _get_target_odds(train_df)
+        valid_label = _get_target_odds(valid_df)
+    else:
+        raise ValueError(f"Invalid target: {target}")
 
     ds_train = xgb.DMatrix(train_feature_df.to_pandas(), label=train_label, enable_categorical=True)
     ds_valid = xgb.DMatrix(valid_feature_df.to_pandas(), label=valid_label, enable_categorical=True)
@@ -53,14 +85,22 @@ def train(
 
     y_pred = model.predict(ds_valid)
     y_true = ds_valid.get_label()
-    auc = roc_auc_score(y_true=y_true, y_score=y_pred)
+    if target == Target.RANK_WIN:
+        auc = roc_auc_score(y_true=y_true, y_score=y_pred)
+        metric = {"valid_auc": auc}
+    elif target == Target.ODDS:
+        mse = mean_squared_error(y_true=y_true, y_pred=y_pred)
+        rmse = math.sqrt(mse)
+        metric = {"valid_rmse": rmse}
+    else:
+        raise ValueError(f"Invalid target: {target}")
 
     importance_types = ("weight", "gain", "cover")
     importance_dict = {it: model.get_score(importance_type=it) for it in importance_types}
 
     return TrainResult(
         model=model,
-        metric={"valid_auc": auc},
+        metric=metric,
         importance=importance_dict,
     )
 
@@ -69,19 +109,25 @@ def tune_hyper_params(
     train_df: pl.DataFrame,
     valid_df: pl.DataFrame,
     feature_columns: list[str],
-    metric_key: str,
     n_trials: int,
     direction: Literal["maximize", "minimize"],
     booster_type: Literal["gbtree", "dart", "gblinear"] = "gbtree",
+    target: str = Target.RANK_WIN,
 ) -> dict[str, Any]:
     const_params = {
-        "objective": "binary:logistic",
         "booster": booster_type,
-        "eval_metric": "auc",
         "tree_method": "hist",
     }
+    if target == Target.RANK_WIN:
+        const_params["eval_metric"] = "auc"
+    elif target == Target.RANK_SHOW:
+        const_params["eval_metric"] = "mlogloss"
+    elif target == Target.ODDS:
+        const_params["eval_metric"] = "rmse"
+    else:
+        raise ValueError(f"Invalid target: {target}")
+
     param_settings = {
-        "n_estimators": ("suggest_int", {"low": 200, "high": 1000, "step": 50}),
         "eta": ("suggest_float", {"low": 1e-2, "high": 0.2, "log": True}),
         "max_depth": ("suggest_int", {"low": 3, "high": 8}),
         # overfitを防ぐために小さめに設定
@@ -103,7 +149,14 @@ def tune_hyper_params(
         for k, (fn_name, kw) in param_settings.items():
             params[k] = suggest_fn_dict[fn_name](k, **kw)
 
-        train_result = train(params=params, train_df=train_df, valid_df=valid_df, feature_columns=feature_columns)
+        train_result = train(
+            params=params,
+            train_df=train_df,
+            valid_df=valid_df,
+            feature_columns=feature_columns,
+            target=target,
+        )
+        metric_key = f'valid_{const_params["eval_metric"]}'
         return train_result.metric[metric_key]
 
     study = optuna.create_study(direction=direction)
@@ -157,7 +210,6 @@ def main() -> None:
         train_df=train_df,
         valid_df=valid_df,
         feature_columns=args.feature_columns,
-        metric_key="auc",
         direction="maximize",
         n_trials=100,
     )
