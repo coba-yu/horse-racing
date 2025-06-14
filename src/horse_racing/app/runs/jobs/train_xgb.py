@@ -52,6 +52,8 @@ def train(
     valid_df: pl.DataFrame,
     feature_columns: list[str],
     target: str = Target.RANK_WIN,
+    num_boost_round: int = 300,
+    early_stopping_rounds: int = 20,
 ) -> TrainResult:
     train_feature_df = train_df.select(feature_columns)
     valid_feature_df = valid_df.select(feature_columns)
@@ -78,9 +80,9 @@ def train(
     model = xgb.train(
         params,
         ds_train,
-        num_boost_round=300,
+        num_boost_round=num_boost_round,
         evals=[(ds_train, "train"), (ds_valid, "valid")],
-        early_stopping_rounds=20,
+        early_stopping_rounds=early_stopping_rounds,
     )
 
     y_pred = model.predict(ds_valid)
