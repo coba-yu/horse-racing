@@ -359,9 +359,6 @@ def preprocess_horse(df: pl.DataFrame) -> pl.DataFrame:
     # - horse_id_last1_goal_time
     # - horse_id_last1_goal_speed
     # - horse_id_last1_last_3f_time
-    # - horse_id_last3_goal_time
-    # - horse_id_last3_goal_speed
-    # - horse_id_last3_last_3f_time
     logger.info("Calculating previous result...")
     previous_mean_feature_columns = [
         ResultColumn.GOAL_TIME,
@@ -369,6 +366,7 @@ def preprocess_horse(df: pl.DataFrame) -> pl.DataFrame:
         ResultColumn.LAST_3F_TIME,
     ]
     corner_rank_columns = [f"corner_rank_{i+1}" for i in range(4)]
+    max_num_races = 5
     last_race_df = df.select(
         pl.col(ResultColumn.HORSE_ID),
         pl.col(ResultColumn.RACE_ID),
@@ -381,19 +379,39 @@ def preprocess_horse(df: pl.DataFrame) -> pl.DataFrame:
         *(_shift_horse_result_expr(raw_column=c, n_shift=2) for c in previous_mean_feature_columns),
         # horse_id_last3_{c}
         *(_shift_horse_result_expr(raw_column=c, n_shift=3) for c in previous_mean_feature_columns),
+        # weight diff
+        *(
+            _shift_horse_result_expr(raw_column=ResultColumn.HORSE_WEIGHT_DIFF, n_shift=i + 1)
+            for i in range(max_num_races)
+        ),
     )
 
-    # mean features of last 3 races
+    # [mean features of last 3 races]
+    # - horse_id_last3_goal_time_avg
+    # - horse_id_last3_goal_speed_avg
+    # - horse_id_last3_last_3f_time_avg
     last_prefix = f"{ResultColumn.HORSE_ID}_last"
     num_mean = 3
     last_race_df = last_race_df.with_columns(
         *(
             (sum([pl.col(f"{last_prefix}{i + 1}_{c}") for i in range(num_mean)]) / num_mean).alias(
-                f"{ResultColumn.HORSE_ID}_last3_{c}"
+                f"{ResultColumn.HORSE_ID}_last{num_mean}_{c}_avg"
             )
             for c in previous_mean_feature_columns
         )
     )
+
+    # [mean features of last 5 races]
+    # - horse_id_last5_horse_weight_diff_avg
+    last_race_df = last_race_df.with_columns(
+        *(
+            (sum([pl.col(f"{last_prefix}{i + 1}_{c}") for i in range(max_num_races)]) / max_num_races).alias(
+                f"{ResultColumn.HORSE_ID}_last{max_num_races}_{c}_avg"
+            )
+            for c in (ResultColumn.HORSE_WEIGHT_DIFF,)
+        )
+    )
+
     logger.info("previous result features calculated:\n%s", last_race_df)
 
     # Combine all stats
@@ -502,7 +520,6 @@ def _agg_jockey(df: pl.DataFrame) -> pl.DataFrame:
 def preprocess(
     raw_df: pl.DataFrame,
     feature_columns: list[str],
-    weight_diff_avg_df: pl.DataFrame | None = None,
     horse_df: pl.DataFrame | None = None,
     jockey_df: pl.DataFrame | None = None,
     mode: Literal["train", "predict"] = "train",
@@ -669,28 +686,16 @@ def preprocess(
 
     # weight dev
     logger.info("Preprocessing horse weight difference average...")
-    if ResultColumn.HORSE_WEIGHT_DIFF_DEV in feature_columns and weight_diff_avg_df is None:
-        if mode == "train":
-            weight_diff_avg_df = df.group_by(ResultColumn.HORSE_ID).agg(
-                pl.mean(ResultColumn.HORSE_WEIGHT_DIFF).alias("weight_diff_avg")
-            )
-        else:
-            raise ValueError("mode is not train, but weight_diff_avg_df is None")
-
-    if weight_diff_avg_df is not None:
-        df = df.join(weight_diff_avg_df, on=ResultColumn.HORSE_ID, how="left")
+    if ResultColumn.HORSE_WEIGHT_DIFF_DEV in feature_columns:
         df = df.with_columns(
-            (pl.col(ResultColumn.HORSE_WEIGHT_DIFF) - pl.col("weight_diff_avg")).alias(
-                ResultColumn.HORSE_WEIGHT_DIFF_DEV
-            )
+            (
+                pl.col(ResultColumn.HORSE_WEIGHT_DIFF)
+                - pl.col(f"{ResultColumn.HORSE_ID}_last5_{ResultColumn.HORSE_WEIGHT_DIFF}_avg")
+            ).alias(ResultColumn.HORSE_WEIGHT_DIFF_DEV)
         )
-
-        if horse_df is None:
-            horse_df = weight_diff_avg_df.clone()
-        else:
-            horse_df = horse_df.join(weight_diff_avg_df, on=ResultColumn.HORSE_ID, how="outer")
-
         logger.info("After joining weight diff avg, shape: %s", df.shape)
+    else:
+        logger.info("Skip.")
 
     if horse_df is not None:
         horse_df = horse_df.unique(subset=[ResultColumn.HORSE_ID])
@@ -699,7 +704,6 @@ def preprocess(
 
     return {
         "feature": df,
-        "weight_diff_avg": weight_diff_avg_df,
         "horse": horse_df,
         "jockey": jockey_df,
     }
