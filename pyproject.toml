@@ -52,6 +52,9 @@ dev = [
 strict = true
 ignore_missing_imports = true
 
+[tool.pytest.ini_options]
+addopts = "--capture=no"
+
 [tool.ruff]
 line-length = 120
 
