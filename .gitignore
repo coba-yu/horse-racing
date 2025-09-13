@@ -170,4 +170,13 @@ cython_debug/
 # PyPI configuration file
 .pypirc
 
+.ruff_cache/
+
 .idea/
+
+*.csv
+*.html
+*.parquet
+data/
+model/
+notebooks/
