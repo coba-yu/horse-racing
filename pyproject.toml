@@ -11,6 +11,7 @@ dependencies = [
     # lxml: pandas read_html に必要.
     # pyarrow: pandas -> polars の変換に必要.
     "beautifulsoup4>=4.12.3,<5.0.0",
+    "catboost>=1.2.8",
     "google-cloud-aiplatform>=1.75.0,<2.0.0",
     "html5lib>=1.1,<2.0.0",
     "kfp>=2.11.0,<3.0.0",
@@ -39,6 +40,7 @@ build-backend = "hatchling.build"
 [dependency-groups]
 dev = [
     "ipywidgets>=8.1.5",
+    "jupyter-contrib-nbextensions>=0.7.0",
     "jupyterlab>=4.3.4",
     "mypy>=1.14.1",
     "pre-commit>=4.0.1",
