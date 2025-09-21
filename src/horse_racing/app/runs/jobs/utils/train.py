@@ -308,7 +308,7 @@ def _shift_horse_result_expr(raw_column: str, prefix: str = "horse_id_", n_shift
     )
 
 
-def preprocess_horse(df: pl.DataFrame) -> pl.DataFrame:
+def preprocess_horse(df: pl.DataFrame, feature_columns: list[str]) -> pl.DataFrame:
     horse_base_df = df.select(
         [
             pl.col(ResultColumn.RANK).cast(pl.Int32),
@@ -367,7 +367,7 @@ def preprocess_horse(df: pl.DataFrame) -> pl.DataFrame:
     ]
     corner_rank_columns = [f"corner_rank_{i+1}" for i in range(4)]
     max_num_races = 5
-    last_race_df = df.select(
+    last_race_exprs = [
         pl.col(ResultColumn.HORSE_ID),
         pl.col(ResultColumn.RACE_ID),
         # horse_id_last1_{c}
@@ -379,12 +379,16 @@ def preprocess_horse(df: pl.DataFrame) -> pl.DataFrame:
         *(_shift_horse_result_expr(raw_column=c, n_shift=2) for c in previous_mean_feature_columns),
         # horse_id_last3_{c}
         *(_shift_horse_result_expr(raw_column=c, n_shift=3) for c in previous_mean_feature_columns),
+    ]
+    if ResultColumn.HORSE_WEIGHT_DIFF_DEV in feature_columns:
         # weight diff
-        *(
-            _shift_horse_result_expr(raw_column=ResultColumn.HORSE_WEIGHT_DIFF, n_shift=i + 1)
-            for i in range(max_num_races)
-        ),
-    )
+        last_race_exprs.extend(
+            [
+                _shift_horse_result_expr(raw_column=ResultColumn.HORSE_WEIGHT_DIFF, n_shift=i + 1)
+                for i in range(max_num_races)
+            ]
+        )
+    last_race_df = df.select(last_race_exprs)
 
     # [mean features of last 3 races]
     # - horse_id_last3_goal_time_avg
@@ -403,14 +407,15 @@ def preprocess_horse(df: pl.DataFrame) -> pl.DataFrame:
 
     # [mean features of last 5 races]
     # - horse_id_last5_horse_weight_diff_avg
-    last_race_df = last_race_df.with_columns(
-        *(
-            (sum([pl.col(f"{last_prefix}{i + 1}_{c}") for i in range(max_num_races)]) / max_num_races).alias(
-                f"{ResultColumn.HORSE_ID}_last{max_num_races}_{c}_avg"
+    if ResultColumn.HORSE_WEIGHT_DIFF_DEV in feature_columns:
+        last_race_df = last_race_df.with_columns(
+            *(
+                (sum([pl.col(f"{last_prefix}{i + 1}_{c}") for i in range(max_num_races)]) / max_num_races).alias(
+                    f"{ResultColumn.HORSE_ID}_last{max_num_races}_{c}_avg"
+                )
+                for c in (ResultColumn.HORSE_WEIGHT_DIFF,)
             )
-            for c in (ResultColumn.HORSE_WEIGHT_DIFF,)
         )
-    )
 
     logger.info("previous result features calculated:\n%s", last_race_df)
 
@@ -670,7 +675,7 @@ def preprocess(
             # - horse_id_last1_goal_speed
             # - horse_id_last1_last_3f_time
             logger.info("Preprocessing horse features...")
-            horse_race_df = preprocess_horse(df)
+            horse_race_df = preprocess_horse(df, feature_columns=feature_columns)
             df = df.join(horse_race_df, on=[ResultColumn.HORSE_ID, ResultColumn.RACE_ID], how="left")
 
             # latest for prediction
