@@ -23,7 +23,7 @@ FIELD_TYPES = (
     2,  # "障害"
 )
 DISTANCE_CLASSES = (
-    "splint",
+    "sprint",
     "mile",
     "middle",
     "middle_to_long",
@@ -111,7 +111,7 @@ def _remove_debut_race(df: pl.DataFrame) -> pl.DataFrame:
 
 def _convert_distance_to_class(distance: int) -> str:
     if distance < 1400:
-        return "splint"
+        return "sprint"
     if distance <= 1800:
         return "mile"
     if distance <= 2200:
@@ -124,6 +124,7 @@ def _convert_distance_to_class(distance: int) -> str:
 def _label_encode(df: pl.DataFrame, column: str, label_dict: dict[str, int]) -> pl.DataFrame:
     return df.with_columns(
         pl.col(column)
+        .cast(pl.Utf8)
         .str.extract(rf'({"|".join(list(label_dict))})')
         .replace_strict(label_dict, default=-1)
         .cast(pl.Int8)
@@ -302,8 +303,9 @@ def _calculate_horse_stats(
 def _shift_horse_result_expr(raw_column: str, prefix: str = "horse_id_", n_shift: int = 1) -> pl.Expr:
     return (
         pl.col(raw_column)
+        .sort_by(ResultColumn.RACE_DATE)
         .shift(n_shift)
-        .over(partition_by=ResultColumn.HORSE_ID, order_by=ResultColumn.RACE_DATE)
+        .over(ResultColumn.HORSE_ID)
         .alias(f"{prefix}last{n_shift}_{raw_column}")
     )
 
@@ -365,24 +367,29 @@ def preprocess_horse(df: pl.DataFrame, feature_columns: list[str]) -> pl.DataFra
         ResultColumn.GOAL_SPEED,
         ResultColumn.LAST_3F_TIME,
     ]
-    corner_rank_columns = [f"corner_rank_{i+1}" for i in range(4)]
-    max_num_races = 5
+    num_corners = 4
+    corner_rank_columns = [f"corner_rank_{i+1}" for i in range(num_corners)]
+    corner_rank_clipped_columns = [f"corner_rank_clipped_{i+1}" for i in range(num_corners)]
     last_race_exprs = [
         pl.col(ResultColumn.HORSE_ID),
         pl.col(ResultColumn.RACE_ID),
-        pl.col(ResultColumn.RACE_DATE),
         # horse_id_last1_{c}
         _shift_horse_result_expr(raw_column=ResultColumn.RANK),
         _shift_horse_result_expr(raw_column=ResultColumn.DISTANCE),
         *(_shift_horse_result_expr(raw_column=c) for c in corner_rank_columns),
+        *(_shift_horse_result_expr(raw_column=c) for c in corner_rank_clipped_columns),
         *(_shift_horse_result_expr(raw_column=c) for c in previous_mean_feature_columns),
         # horse_id_last2_{c}
         *(_shift_horse_result_expr(raw_column=c, n_shift=2) for c in previous_mean_feature_columns),
+        *(_shift_horse_result_expr(raw_column=c, n_shift=2) for c in corner_rank_columns),
+        *(_shift_horse_result_expr(raw_column=c, n_shift=2) for c in corner_rank_clipped_columns),
         # horse_id_last3_{c}
         *(_shift_horse_result_expr(raw_column=c, n_shift=3) for c in previous_mean_feature_columns),
-        # Get the date of the last race
-        _shift_horse_result_expr(raw_column=ResultColumn.RACE_DATE),
+        *(_shift_horse_result_expr(raw_column=c, n_shift=3) for c in corner_rank_columns),
+        *(_shift_horse_result_expr(raw_column=c, n_shift=3) for c in corner_rank_clipped_columns),
     ]
+
+    max_num_races = 5
     if ResultColumn.HORSE_WEIGHT_DIFF_DEV in feature_columns:
         # weight diff
         last_race_exprs.extend(
@@ -404,7 +411,7 @@ def preprocess_horse(df: pl.DataFrame, feature_columns: list[str]) -> pl.DataFra
             (sum([pl.col(f"{last_prefix}{i + 1}_{c}") for i in range(num_mean)]) / num_mean).alias(
                 f"{ResultColumn.HORSE_ID}_last{num_mean}_{c}_avg"
             )
-            for c in previous_mean_feature_columns
+            for c in (*previous_mean_feature_columns, *corner_rank_columns, *corner_rank_clipped_columns)
         )
     )
 
@@ -420,10 +427,15 @@ def preprocess_horse(df: pl.DataFrame, feature_columns: list[str]) -> pl.DataFra
             )
         )
 
-    logger.info("previous result features calculated:\n%s", last_race_df)
-
     # Add days since last race feature
-    last_race_df = last_race_df.with_columns(
+    race_date_df = df.select(
+        pl.col(ResultColumn.HORSE_ID).cast(pl.Utf8),
+        pl.col(ResultColumn.RACE_ID).cast(pl.Utf8),
+        pl.col(ResultColumn.RACE_DATE).cast(pl.Utf8),
+        # Get the date of the last race
+        _shift_horse_result_expr(raw_column=ResultColumn.RACE_DATE),
+    )
+    race_date_df = race_date_df.with_columns(
         (
             (
                 pl.col(ResultColumn.RACE_DATE).str.strptime(pl.Date, "%Y%m%d")
@@ -433,6 +445,13 @@ def preprocess_horse(df: pl.DataFrame, feature_columns: list[str]) -> pl.DataFra
             .alias(f"{ResultColumn.HORSE_ID}_days_since_last_race")
         )
     )
+    race_date_df = race_date_df.drop(
+        ResultColumn.RACE_DATE,
+        f"{ResultColumn.HORSE_ID}_last1_{ResultColumn.RACE_DATE}",
+    )
+    last_race_df = last_race_df.join(race_date_df, on=[ResultColumn.HORSE_ID, ResultColumn.RACE_ID], how="left")
+
+    logger.info("previous result features calculated:\n%s", last_race_df)
 
     # Combine all stats
     logger.info("Combining win, show and previous stats...")
@@ -615,12 +634,26 @@ def preprocess(
         )
         df = df.drop(f"{ResultColumn.GOAL_TIME}_minute", f"{ResultColumn.GOAL_TIME}_second")
 
-        # corner rank
+        # [corner rank]
+        # 6-4-3-1
+        # => corner_rank_1 = 6, corner_rank_2 = 4, ... , corner_rank_4 = 1
+        num_corners = 4
+        max_rank = 6
         df = df.with_columns(pl.col(f"raw_{ResultColumn.CORNER_RANK}").str.split("-").alias("corner_ranks"))
         df = df.with_columns(
             [
                 pl.col("corner_ranks").list.get(i, null_on_oob=True).cast(pl.Int32).alias(f"corner_rank_{i+1}")
-                for i in range(4)
+                for i in range(num_corners)
+            ]
+        )
+        # Clip large corner rank
+        df = df.with_columns(
+            [
+                pl.when(pl.col(f"corner_rank_{i+1}") > max_rank)
+                .then(max_rank)
+                .otherwise(pl.col(f"corner_rank_{i+1}"))
+                .alias(f"corner_rank_clipped_{i+1}")
+                for i in range(num_corners)
             ]
         )
         df = df.drop("corner_ranks", pl.col(f"raw_{ResultColumn.CORNER_RANK}"))
