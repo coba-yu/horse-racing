@@ -370,6 +370,7 @@ def preprocess_horse(df: pl.DataFrame, feature_columns: list[str]) -> pl.DataFra
     last_race_exprs = [
         pl.col(ResultColumn.HORSE_ID),
         pl.col(ResultColumn.RACE_ID),
+        pl.col(ResultColumn.RACE_DATE),
         # horse_id_last1_{c}
         _shift_horse_result_expr(raw_column=ResultColumn.RANK),
         _shift_horse_result_expr(raw_column=ResultColumn.DISTANCE),
@@ -379,6 +380,8 @@ def preprocess_horse(df: pl.DataFrame, feature_columns: list[str]) -> pl.DataFra
         *(_shift_horse_result_expr(raw_column=c, n_shift=2) for c in previous_mean_feature_columns),
         # horse_id_last3_{c}
         *(_shift_horse_result_expr(raw_column=c, n_shift=3) for c in previous_mean_feature_columns),
+        # Get the date of the last race
+        _shift_horse_result_expr(raw_column=ResultColumn.RACE_DATE),
     ]
     if ResultColumn.HORSE_WEIGHT_DIFF_DEV in feature_columns:
         # weight diff
@@ -418,6 +421,18 @@ def preprocess_horse(df: pl.DataFrame, feature_columns: list[str]) -> pl.DataFra
         )
 
     logger.info("previous result features calculated:\n%s", last_race_df)
+
+    # Add days since last race feature
+    last_race_df = last_race_df.with_columns(
+        (
+            (
+                pl.col(ResultColumn.RACE_DATE).str.strptime(pl.Date, "%Y%m%d")
+                - pl.col(f"{ResultColumn.HORSE_ID}_last1_{ResultColumn.RACE_DATE}").str.strptime(pl.Date, "%Y%m%d")
+            )
+            .dt.total_days()
+            .alias(f"{ResultColumn.HORSE_ID}_days_since_last_race")
+        )
+    )
 
     # Combine all stats
     logger.info("Combining win, show and previous stats...")
