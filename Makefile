@@ -54,3 +54,7 @@ execute_job_train_xgb:
 		--args="--train-first-date,$(TRAIN_FIRST_DATE),--train-last-date,$(TRAIN_LAST_DATE),--valid-last-date,$(VALID_LAST_DATE),--data-version,$(DATA_VERSION)" \
 		--region=$(REGION) \
 		$(GLOUD_WIDE_FLAG)
+
+.PHONY: nb
+nb:
+	uv run jupyter-lab
