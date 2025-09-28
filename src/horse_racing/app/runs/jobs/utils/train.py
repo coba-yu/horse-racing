@@ -408,7 +408,7 @@ def preprocess_horse(df: pl.DataFrame, feature_columns: list[str]) -> pl.DataFra
     num_mean = 3
     last_race_df = last_race_df.with_columns(
         *(
-            (sum([pl.col(f"{last_prefix}{i + 1}_{c}") for i in range(num_mean)]) / num_mean).alias(
+            pl.mean_horizontal([pl.col(f"{last_prefix}{i + 1}_{c}") for i in range(num_mean)]).alias(
                 f"{ResultColumn.HORSE_ID}_last{num_mean}_{c}_avg"
             )
             for c in (*previous_mean_feature_columns, *corner_rank_columns, *corner_rank_clipped_columns)
