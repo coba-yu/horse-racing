@@ -1,4 +1,5 @@
 import json
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -41,11 +42,6 @@ RACE_PLACES = (
     "札幌",
     "京都",
 )
-
-_PREVIOUS_FEATURE_RENAME_DICT = {
-    ResultColumn.WIN_LABEL: "win_rate",
-    ResultColumn.SHOW_LABEL: "show_rate",
-}
 
 
 @dataclass
@@ -140,6 +136,27 @@ def get_rank_clipped_expr(
         .otherwise(pl.col(raw_column))
         .alias(f"{raw_column}_clipped")
     )
+
+
+def calcurate_goal_speed(df: pl.DataFrame) -> pl.DataFrame:
+    # 1:54.5 => 60 + 54.5 = 114.5 sec
+    df = df.with_columns(
+        pl.col(ResultColumn.GOAL_TIME).str.extract(r"(\d+):").cast(pl.Int32).alias(f"{ResultColumn.GOAL_TIME}_minute"),
+        pl.col(ResultColumn.GOAL_TIME)
+        .str.extract(r"\d+:(\d+\.?\d*)")
+        .cast(pl.Float64)
+        .alias(f"{ResultColumn.GOAL_TIME}_second"),
+    )
+
+    df = df.with_columns(
+        (pl.col(f"{ResultColumn.GOAL_TIME}_minute") * 60.0 + pl.col(f"{ResultColumn.GOAL_TIME}_second")).alias(
+            ResultColumn.GOAL_TIME
+        )
+    )
+    df = df.with_columns(
+        (pl.col(ResultColumn.DISTANCE) / pl.col(ResultColumn.GOAL_TIME)).alias(ResultColumn.GOAL_SPEED)
+    )
+    return df.drop(f"{ResultColumn.GOAL_TIME}_minute", f"{ResultColumn.GOAL_TIME}_second")
 
 
 def _convert_distance_to_class(distance: int) -> str:
@@ -304,75 +321,57 @@ def _calculate_race_place_stats(
     return result_df
 
 
-def _calculate_horse_stats(
-    base_df: pl.DataFrame,
-    race_count_df: pl.DataFrame,
-    rank_condition: pl.Expr,
-    ticket_type: str,
-) -> pl.DataFrame:
-    id_column = ResultColumn.HORSE_ID
-
-    # Calculate overall stats
-    result_df = _calculate_overall_stats(
-        base_df=base_df,
-        race_count_df=race_count_df,
-        rank_condition=rank_condition,
-        ticket_type=ticket_type,
-        id_column=id_column,
-    )
-
-    # Calculate distance specific stats
-    result_df = _calculate_distance_stats(
-        base_df=base_df,
-        rank_condition=rank_condition,
-        ticket_type=ticket_type,
-        id_column=id_column,
-        result_df=result_df,
-    )
-
-    return result_df
+def _format_last_column_name(raw_column: str, prefix: str = "horse_id_", n_shift: int = 0) -> str:
+    return f"{prefix}last{n_shift + 1}_{raw_column}"
 
 
-def _shift_horse_result_expr(raw_column: str, prefix: str = "horse_id_", n_shift: int = 1) -> pl.Expr:
+def _shift_horse_result_expr(raw_column: str, prefix: str = "horse_id_", n_shift: int = 0) -> pl.Expr:
+    alias_name = _format_last_column_name(raw_column=raw_column, prefix=prefix, n_shift=n_shift)
     return (
-        pl.col(raw_column)
-        .sort_by(ResultColumn.RACE_DATE)
-        .shift(n_shift)
-        .over(ResultColumn.HORSE_ID)
-        .alias(f"{prefix}last{n_shift}_{raw_column}")
+        pl.col(raw_column).sort_by(ResultColumn.RACE_DATE).shift(n_shift).over(ResultColumn.HORSE_ID).alias(alias_name)
     )
 
 
-def _agg_horse_last_result_by_distance_class(base_df: pl.DataFrame, last_prefix: str) -> pl.DataFrame:
-    all_df: Optional[pl.DataFrame] = None
-    for distance_class in DISTANCE_CLASSES:
-        logger.info("horse last result by distance class: %s", distance_class)
-        distance_class_df = base_df.filter(pl.col(ResultColumn.DISTANCE_CLASS) == distance_class)
-        key_columns = (
-            ResultColumn.HORSE_ID,
-            ResultColumn.RACE_ID,
-        )
-        previous_feature_raw_columns = (
-            ResultColumn.WIN_LABEL,
-            ResultColumn.SHOW_LABEL,
-            ResultColumn.RANK_CLIPPED,
-        )
+def _agg_horse_last_result(
+    base_df: pl.DataFrame,
+    race_categories: Sequence[str],
+    race_category_column: str,
+    last_prefix: str,
+) -> dict[str, Any]:
+    key_columns = (
+        ResultColumn.HORSE_ID,
+        ResultColumn.RACE_ID,
+    )
+    previous_feature_raw_columns = (
+        ResultColumn.WIN_LABEL,
+        ResultColumn.SHOW_LABEL,
+        ResultColumn.RANK_CLIPPED,
+    )
+    rate_rename_dict = {
+        ResultColumn.WIN_LABEL: "win_rate",
+        ResultColumn.SHOW_LABEL: "show_rate",
+    }
 
-        distance_class_df = distance_class_df.select(
+    all_df: Optional[pl.DataFrame] = None
+    for category in race_categories:
+        logger.info("horse last result by %s: %s", race_category_column, category)
+        target_df = base_df.filter(pl.col(race_category_column) == category)
+        target_df = target_df.select(
             *key_columns,
             ResultColumn.RACE_DATE,
             *previous_feature_raw_columns,
         )
 
         # 過去Nレースの平均を取るための材料
-        distance_class_df = distance_class_df.with_columns(
+        max_past = 5
+        target_df = target_df.with_columns(
             _shift_horse_result_expr(raw_column=c, n_shift=n_shift)
             for c in previous_feature_raw_columns
-            for n_shift in (1, 2, 3, 4, 5)
+            for n_shift in range(max_past)
         )
 
         # mean
-        distance_class_df = distance_class_df.with_columns(
+        target_df = target_df.with_columns(
             *(
                 pl.mean_horizontal([pl.col(f"{last_prefix}{i + 1}_{c}") for i in range(num_mean)]).alias(
                     f"{ResultColumn.HORSE_ID}_last{num_mean}_{c}_avg"
@@ -382,140 +381,52 @@ def _agg_horse_last_result_by_distance_class(base_df: pl.DataFrame, last_prefix:
             )
         )
 
-        distance_class_df = distance_class_df.select(
-            *key_columns,
-            *(
-                pl.col(f"{ResultColumn.HORSE_ID}_last1_{c}").alias(
-                    f"{ResultColumn.HORSE_ID}_last1_{c}_distance_class_{distance_class}"
-                )
-                for c in previous_feature_raw_columns
-            ),
-            *(
-                pl.col(f"{ResultColumn.HORSE_ID}_last{num_mean}_{c}_avg").alias(
-                    f"{ResultColumn.HORSE_ID}_last{num_mean}_{_PREVIOUS_FEATURE_RENAME_DICT.get(c, c)}_avg_distance_class_{distance_class}"
-                )
-                for c in previous_feature_raw_columns
-                for num_mean in (3, 5)
-            ),
-        )
+        previous_feature_columns = []
+        previous_feature_exprs = []
+        for c in previous_feature_raw_columns:
+            # last 1 race
+            last1_original = f"{ResultColumn.HORSE_ID}_last1_{c}"
+            last1_alias = f"{last1_original}_{race_category_column}_{category}"
+            previous_feature_columns.append(last1_alias)
+            previous_feature_exprs.append(pl.col(last1_original).alias(last1_alias))
+
+            # last 3, 5 races
+            for num_mean in (3, 5):
+                last_n_prefix = f"{ResultColumn.HORSE_ID}_last{num_mean}_"
+                last_n_original = f"{last_n_prefix}{c}_avg"
+                last_n_alias = f"{last_n_prefix}{rate_rename_dict.get(c, c)}_avg_{race_category_column}_{category}"
+                previous_feature_columns.append(last_n_alias)
+                previous_feature_exprs.append(pl.col(last_n_original).alias(last_n_alias))
+
+        target_df = target_df.select(*key_columns, *previous_feature_exprs)
         if all_df is None:
-            all_df = distance_class_df
+            all_df = target_df
         else:
             suffix = "_right"
-            all_df = all_df.join(distance_class_df, on=key_columns, how="outer", suffix=suffix)
+            all_df = all_df.join(target_df, on=key_columns, how="outer", suffix=suffix)
             all_df = all_df.drop([f"{c}{suffix}" for c in key_columns], strict=False)
-    return all_df
+    return {"data": all_df, "previous_feature_columns": previous_feature_columns}
 
 
-def _agg_horse_last_result_by_filed_type(base_df: pl.DataFrame, last_prefix: str) -> pl.DataFrame:
-    all_df: Optional[pl.DataFrame] = None
-    for field_type in FIELD_TYPES:
-        logger.info("horse last result by field type: %s", field_type)
-        field_type_df = base_df.filter(pl.col(ResultColumn.FIELD_TYPE) == field_type)
-        key_columns = (
-            ResultColumn.HORSE_ID,
-            ResultColumn.RACE_ID,
-        )
-        previous_feature_raw_columns = (
-            ResultColumn.WIN_LABEL,
-            ResultColumn.SHOW_LABEL,
-            ResultColumn.RANK_CLIPPED,
-        )
+def _agg_horse_last_result_by_distance_class(base_df: pl.DataFrame, last_prefix: str) -> dict[str, Any]:
+    return _agg_horse_last_result(
+        base_df=base_df,
+        race_categories=DISTANCE_CLASSES,
+        race_category_column=ResultColumn.DISTANCE_CLASS,
+        last_prefix=last_prefix,
+    )
 
-        field_type_df = field_type_df.select(
-            *key_columns,
-            ResultColumn.RACE_DATE,
-            *previous_feature_raw_columns,
-        )
 
-        # 過去Nレースの平均を取るための材料
-        field_type_df = field_type_df.with_columns(
-            _shift_horse_result_expr(raw_column=c, n_shift=n_shift)
-            for c in previous_feature_raw_columns
-            for n_shift in (1, 2, 3, 4, 5)
-        )
-
-        # mean
-        field_type_df = field_type_df.with_columns(
-            *(
-                pl.mean_horizontal([pl.col(f"{last_prefix}{i + 1}_{c}") for i in range(num_mean)]).alias(
-                    f"{ResultColumn.HORSE_ID}_last{num_mean}_{c}_avg"
-                )
-                for c in previous_feature_raw_columns
-                for num_mean in (3, 5)
-            )
-        )
-
-        field_type_df = field_type_df.select(
-            *key_columns,
-            *(
-                pl.col(f"{ResultColumn.HORSE_ID}_last1_{c}").alias(
-                    f"{ResultColumn.HORSE_ID}_last1_{c}_field_type_{field_type}"
-                )
-                for c in previous_feature_raw_columns
-            ),
-            *(
-                pl.col(f"{ResultColumn.HORSE_ID}_last{num_mean}_{c}_avg").alias(
-                    f"{ResultColumn.HORSE_ID}_last{num_mean}_{_PREVIOUS_FEATURE_RENAME_DICT.get(c, c)}_avg_field_type_{field_type}"
-                )
-                for c in previous_feature_raw_columns
-                for num_mean in (3, 5)
-            ),
-        )
-        if all_df is None:
-            all_df = field_type_df
-        else:
-            suffix = "_right"
-            all_df = all_df.join(field_type_df, on=key_columns, how="outer", suffix=suffix)
-            all_df = all_df.drop([f"{c}{suffix}" for c in key_columns], strict=False)
-    return all_df
+def _agg_horse_last_result_by_filed_type(base_df: pl.DataFrame, last_prefix: str) -> dict[str, Any]:
+    return _agg_horse_last_result(
+        base_df=base_df,
+        race_categories=[str(category) for category in FIELD_TYPES],
+        race_category_column=ResultColumn.FIELD_TYPE,
+        last_prefix=last_prefix,
+    )
 
 
 def preprocess_horse(df: pl.DataFrame, feature_columns: list[str]) -> pl.DataFrame:
-    horse_base_df = df.select(
-        [
-            pl.col(ResultColumn.RANK).cast(pl.Int32),
-            pl.col(ResultColumn.HORSE_ID).cast(pl.String),
-            pl.col(ResultColumn.DISTANCE_CLASS),
-            pl.col(ResultColumn.FIELD_TYPE),
-        ]
-    )
-
-    # Calculate race counts once
-    horse_race_count_df = horse_base_df.group_by(ResultColumn.HORSE_ID).agg(
-        pl.col(ResultColumn.RANK).count().alias("race_count")
-    )
-
-    # [win]
-    #  - horse_id_win_count
-    #  - horse_id_win_rate
-    #  - horse_id_win_count_distance_class_{distance_class}
-    #  - horse_id_win_rate_distance_class_{distance_class}
-    logger.info("Calculating horse win count and rate...")
-    win_rank_condition = get_win_rank_condition()
-    win_stats = _calculate_horse_stats(
-        base_df=horse_base_df,
-        race_count_df=horse_race_count_df,
-        rank_condition=win_rank_condition,
-        ticket_type="win",
-    )
-    logger.info("win count and rate features calculated:\n%s", win_stats)
-
-    # [show]
-    #  - horse_id_show_count
-    #  - horse_id_show_rate
-    #  - horse_id_show_count_distance_class_{distance_class}
-    #  - horse_id_show_rate_distance_class_{distance_class}
-    logger.info("Calculating horse show count and rate...")
-    show_rank_condition = get_show_rank_condition()
-    show_stats = _calculate_horse_stats(
-        base_df=horse_base_df,
-        race_count_df=horse_race_count_df,
-        rank_condition=show_rank_condition,
-        ticket_type="show",
-    )
-    logger.info("show count and rate features calculated:\n%s", show_stats)
-
     # [previous]
     # - horse_id_last1_rank
     # - horse_id_last1_distance
@@ -529,26 +440,25 @@ def preprocess_horse(df: pl.DataFrame, feature_columns: list[str]) -> pl.DataFra
         ResultColumn.GOAL_SPEED,
         ResultColumn.LAST_3F_TIME,
     ]
+    num_mean_races = 3
     num_corners = 4
     corner_rank_columns = [f"corner_{i+1}_rank" for i in range(num_corners)]
     corner_rank_clipped_columns = [f"corner_{i+1}_rank_clipped" for i in range(num_corners)]
+    mean_columns = [
+        *previous_mean_feature_columns,
+        *corner_rank_columns,
+        *corner_rank_clipped_columns,
+    ]
     last_race_exprs = [
         pl.col(ResultColumn.HORSE_ID),
         pl.col(ResultColumn.RACE_ID),
-        # horse_id_last1_{c}
+        # horse_id_last{i + 1}_{c}
         _shift_horse_result_expr(raw_column=ResultColumn.RANK),
         _shift_horse_result_expr(raw_column=ResultColumn.DISTANCE),
-        *(_shift_horse_result_expr(raw_column=c) for c in corner_rank_columns),
-        *(_shift_horse_result_expr(raw_column=c) for c in corner_rank_clipped_columns),
-        *(_shift_horse_result_expr(raw_column=c) for c in previous_mean_feature_columns),
-        # horse_id_last2_{c}
-        *(_shift_horse_result_expr(raw_column=c, n_shift=2) for c in previous_mean_feature_columns),
-        *(_shift_horse_result_expr(raw_column=c, n_shift=2) for c in corner_rank_columns),
-        *(_shift_horse_result_expr(raw_column=c, n_shift=2) for c in corner_rank_clipped_columns),
-        # horse_id_last3_{c}
-        *(_shift_horse_result_expr(raw_column=c, n_shift=3) for c in previous_mean_feature_columns),
-        *(_shift_horse_result_expr(raw_column=c, n_shift=3) for c in corner_rank_columns),
-        *(_shift_horse_result_expr(raw_column=c, n_shift=3) for c in corner_rank_clipped_columns),
+        *(_shift_horse_result_expr(raw_column=c, n_shift=i) for c in mean_columns for i in range(num_mean_races)),
+    ]
+    race_previous_columns = [
+        _format_last_column_name(raw_column=c, n_shift=i) for c in mean_columns for i in range(num_mean_races)
     ]
 
     max_num_races = 5
@@ -556,7 +466,7 @@ def preprocess_horse(df: pl.DataFrame, feature_columns: list[str]) -> pl.DataFra
         # weight diff
         last_race_exprs.extend(
             [
-                _shift_horse_result_expr(raw_column=ResultColumn.HORSE_WEIGHT_DIFF, n_shift=i + 1)
+                _shift_horse_result_expr(raw_column=ResultColumn.HORSE_WEIGHT_DIFF, n_shift=i)
                 for i in range(max_num_races)
             ]
         )
@@ -566,28 +476,37 @@ def preprocess_horse(df: pl.DataFrame, feature_columns: list[str]) -> pl.DataFra
     # - horse_id_last3_goal_time_avg
     # - horse_id_last3_goal_speed_avg
     # - horse_id_last3_last_3f_time_avg
+    # - horse_id_last3_corner_1_rank_avg
+    # - horse_id_last3_corner_2_rank_avg
+    # - horse_id_last3_corner_3_rank_avg
+    # - horse_id_last3_corner_4_rank_avg
+    # - horse_id_last3_corner_1_rank_clipped_avg
+    # - horse_id_last3_corner_2_rank_clipped_avg
+    # - horse_id_last3_corner_3_rank_clipped_avg
+    # - horse_id_last3_corner_4_rank_clipped_avg
     last_prefix = f"{ResultColumn.HORSE_ID}_last"
     num_mean = 3
-    last_race_df = last_race_df.with_columns(
-        *(
-            pl.mean_horizontal([pl.col(f"{last_prefix}{i + 1}_{c}") for i in range(num_mean)]).alias(
-                f"{ResultColumn.HORSE_ID}_last{num_mean}_{c}_avg"
-            )
-            for c in (*previous_mean_feature_columns, *corner_rank_columns, *corner_rank_clipped_columns)
-        )
-    )
+    last3_mean_column_dict = {c: f"{ResultColumn.HORSE_ID}_last{num_mean}_{c}_avg" for c in mean_columns}
+    last3_mean_exprs = [
+        pl.mean_horizontal([pl.col(f"{last_prefix}{i + 1}_{src_c}") for i in range(num_mean)]).alias(alias_c)
+        for src_c, alias_c in last3_mean_column_dict.items()
+    ]
+    last_race_df = last_race_df.with_columns(last3_mean_exprs)
+    last3_mean_columns = [c for _, c in last3_mean_column_dict.items()]
 
     # [mean features of last 5 races]
     # - horse_id_last5_horse_weight_diff_avg
     if ResultColumn.HORSE_WEIGHT_DIFF_DEV in feature_columns:
+        weight_diff_avg_column = f"{ResultColumn.HORSE_ID}_last{max_num_races}_{ResultColumn.HORSE_WEIGHT_DIFF}_avg"
         last_race_df = last_race_df.with_columns(
-            *(
-                (sum([pl.col(f"{last_prefix}{i + 1}_{c}") for i in range(max_num_races)]) / max_num_races).alias(
-                    f"{ResultColumn.HORSE_ID}_last{max_num_races}_{c}_avg"
-                )
-                for c in (ResultColumn.HORSE_WEIGHT_DIFF,)
-            )
+            (
+                sum([pl.col(f"{last_prefix}{i + 1}_{ResultColumn.HORSE_WEIGHT_DIFF}") for i in range(max_num_races)])
+                / max_num_races
+            ).alias(weight_diff_avg_column)
         )
+        weight_diff_avg_previous_columns = [weight_diff_avg_column]
+    else:
+        weight_diff_avg_previous_columns = []
 
     # [previous.race_date]
     race_date_df = df.select(
@@ -596,26 +515,37 @@ def preprocess_horse(df: pl.DataFrame, feature_columns: list[str]) -> pl.DataFra
         # Get the date of the last race
         _shift_horse_result_expr(raw_column=ResultColumn.RACE_DATE),
     )
-
-    logger.info("previous result features calculated:\n%s", last_race_df)
+    race_date_previous_columns = [_format_last_column_name(raw_column=ResultColumn.RACE_DATE)]
 
     # [previous.distance_class]
-    distance_class_df = _agg_horse_last_result_by_distance_class(base_df=df, last_prefix=last_prefix)
+    distance_class_result = _agg_horse_last_result_by_distance_class(base_df=df, last_prefix=last_prefix)
+    distance_class_df = distance_class_result["data"]
+    distance_class_previous_columns = distance_class_result["previous_feature_columns"]
 
     # [previous.field_type]
-    field_type_df = _agg_horse_last_result_by_filed_type(base_df=df, last_prefix=last_prefix)
+    field_type_result = _agg_horse_last_result_by_filed_type(base_df=df, last_prefix=last_prefix)
+    field_type_df = field_type_result["data"]
+    field_type_previous_columns = field_type_result["previous_feature_columns"]
 
     # Combine all stats
     logger.info("Combining win, show and previous stats...")
     horse_race_df = df.select(ResultColumn.HORSE_ID, ResultColumn.RACE_ID).unique()
-    return (
-        horse_race_df.join(last_race_df, on=[ResultColumn.HORSE_ID, ResultColumn.RACE_ID], how="left")
-        .join(race_date_df, on=[ResultColumn.HORSE_ID, ResultColumn.RACE_ID], how="left")
-        .join(distance_class_df, on=[ResultColumn.HORSE_ID, ResultColumn.RACE_ID], how="left")
-        .join(field_type_df, on=[ResultColumn.HORSE_ID, ResultColumn.RACE_ID], how="left")
-        .join(win_stats, on=ResultColumn.HORSE_ID, how="left")
-        .join(show_stats, on=ResultColumn.HORSE_ID, how="left")
-    )
+    return {
+        "data": (
+            horse_race_df.join(last_race_df, on=[ResultColumn.HORSE_ID, ResultColumn.RACE_ID], how="left")
+            .join(race_date_df, on=[ResultColumn.HORSE_ID, ResultColumn.RACE_ID], how="left")
+            .join(distance_class_df, on=[ResultColumn.HORSE_ID, ResultColumn.RACE_ID], how="left")
+            .join(field_type_df, on=[ResultColumn.HORSE_ID, ResultColumn.RACE_ID], how="left")
+        ),
+        "previous_feature_columns": [
+            *race_previous_columns,
+            *last3_mean_columns,
+            *weight_diff_avg_previous_columns,
+            *race_date_previous_columns,
+            *distance_class_previous_columns,
+            *field_type_previous_columns,
+        ],
+    }
 
 
 def _calculate_jockey_stats(
@@ -772,27 +702,8 @@ def preprocess(
             get_rank_clipped_expr(),
         )
 
-        # goal time
-        # 1:54.5 => 60 + 54.5 = 114.5 sec
-        df = df.with_columns(
-            pl.col(ResultColumn.GOAL_TIME)
-            .str.extract(r"(\d+):")
-            .cast(pl.Int32)
-            .alias(f"{ResultColumn.GOAL_TIME}_minute"),
-            pl.col(ResultColumn.GOAL_TIME)
-            .str.extract(r"\d+:(\d+\.?\d*)")
-            .cast(pl.Float64)
-            .alias(f"{ResultColumn.GOAL_TIME}_second"),
-        )
-        df = df.with_columns(
-            (pl.col(f"{ResultColumn.GOAL_TIME}_minute") * 60.0 + pl.col(f"{ResultColumn.GOAL_TIME}_second")).alias(
-                ResultColumn.GOAL_TIME
-            )
-        )
-        df = df.with_columns(
-            (pl.col(ResultColumn.DISTANCE) / pl.col(ResultColumn.GOAL_TIME)).alias(ResultColumn.GOAL_SPEED)
-        )
-        df = df.drop(f"{ResultColumn.GOAL_TIME}_minute", f"{ResultColumn.GOAL_TIME}_second")
+        # [goal speed]
+        df = calcurate_goal_speed(df)
 
         # [corner rank]
         # 6-4-3-1
@@ -874,12 +785,19 @@ def preprocess(
             # - horse_id_last1_goal_speed
             # - horse_id_last1_last_3f_time
             logger.info("Preprocessing horse features...")
-            horse_race_df = preprocess_horse(df, feature_columns=feature_columns)
+            horse_race_result = preprocess_horse(df, feature_columns=feature_columns)
+            horse_race_df = horse_race_result["data"]
+            previous_feature_columns = horse_race_result["previous_feature_columns"]
             df = df.join(horse_race_df, on=[ResultColumn.HORSE_ID, ResultColumn.RACE_ID], how="left")
 
             # latest for prediction
             horse_df = df.group_by(ResultColumn.HORSE_ID).last().drop(ResultColumn.RACE_ID)
 
+            # shift previous features
+            df = df.with_columns(
+                pl.col(c).sort_by(ResultColumn.RACE_DATE).shift(1).over(ResultColumn.HORSE_ID).alias(c)
+                for c in previous_feature_columns
+            )
         else:
             # TODO
             # raise ValueError("mode is not train, but horse_df is not provided")
@@ -887,7 +805,7 @@ def preprocess(
     else:
         df = df.join(horse_df, on=ResultColumn.HORSE_ID, how="left")
 
-    # Add days since last race feature
+    # Days since last race feature
     df = df.with_columns(
         (
             (
