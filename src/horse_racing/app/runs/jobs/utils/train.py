@@ -524,29 +524,13 @@ def preprocess_horse(df: pl.DataFrame, feature_columns: list[str]) -> pl.DataFra
             )
         )
 
-    # Add days since last race feature
+    # [previous.race_date]
     race_date_df = df.select(
         pl.col(ResultColumn.HORSE_ID).cast(pl.Utf8),
         pl.col(ResultColumn.RACE_ID).cast(pl.Utf8),
-        pl.col(ResultColumn.RACE_DATE).cast(pl.Utf8),
         # Get the date of the last race
         _shift_horse_result_expr(raw_column=ResultColumn.RACE_DATE),
     )
-    race_date_df = race_date_df.with_columns(
-        (
-            (
-                pl.col(ResultColumn.RACE_DATE).str.strptime(pl.Date, "%Y%m%d")
-                - pl.col(f"{ResultColumn.HORSE_ID}_last1_{ResultColumn.RACE_DATE}").str.strptime(pl.Date, "%Y%m%d")
-            )
-            .dt.total_days()
-            .alias(f"{ResultColumn.HORSE_ID}_days_since_last_race")
-        )
-    )
-    race_date_df = race_date_df.drop(
-        ResultColumn.RACE_DATE,
-        f"{ResultColumn.HORSE_ID}_last1_{ResultColumn.RACE_DATE}",
-    )
-    last_race_df = last_race_df.join(race_date_df, on=[ResultColumn.HORSE_ID, ResultColumn.RACE_ID], how="left")
 
     logger.info("previous result features calculated:\n%s", last_race_df)
 
@@ -561,6 +545,7 @@ def preprocess_horse(df: pl.DataFrame, feature_columns: list[str]) -> pl.DataFra
     horse_race_df = df.select(ResultColumn.HORSE_ID, ResultColumn.RACE_ID).unique()
     return (
         horse_race_df.join(last_race_df, on=[ResultColumn.HORSE_ID, ResultColumn.RACE_ID], how="left")
+        .join(race_date_df, on=[ResultColumn.HORSE_ID, ResultColumn.RACE_ID], how="left")
         .join(field_type_df, on=[ResultColumn.HORSE_ID, ResultColumn.RACE_ID], how="left")
         .join(win_stats, on=ResultColumn.HORSE_ID, how="left")
         .join(show_stats, on=ResultColumn.HORSE_ID, how="left")
@@ -835,6 +820,19 @@ def preprocess(
             pass
     else:
         df = df.join(horse_df, on=ResultColumn.HORSE_ID, how="left")
+
+    # Add days since last race feature
+    df = df.with_columns(
+        (
+            (
+                pl.col(ResultColumn.RACE_DATE).str.strptime(pl.Date, "%Y%m%d")
+                - pl.col(f"{ResultColumn.HORSE_ID}_last1_{ResultColumn.RACE_DATE}").str.strptime(pl.Date, "%Y%m%d")
+            )
+            .dt.total_days()
+            .alias(f"{ResultColumn.HORSE_ID}_days_since_last_race")
+        )
+    )
+
     logger.info("After joining horse features, shape: %s", df.shape)
 
     # weight dev
