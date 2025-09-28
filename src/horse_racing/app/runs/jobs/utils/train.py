@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Literal, Any
+from typing import Literal, Any, Optional
 
 import polars as pl
 
@@ -107,6 +107,34 @@ def collect_data(
 def _remove_debut_race(df: pl.DataFrame) -> pl.DataFrame:
     df = df.filter(~pl.col("race_name").str.contains("新馬"))
     return df
+
+
+def get_win_rank_condition() -> pl.Expr:
+    return pl.col(ResultColumn.RANK) == 1
+
+
+def get_win_label_expr() -> pl.Expr:
+    return pl.when(get_win_rank_condition()).then(1).otherwise(0).alias(ResultColumn.WIN_LABEL)
+
+
+def get_show_rank_condition() -> pl.Expr:
+    return (pl.col(ResultColumn.RANK) >= 1) & (pl.col(ResultColumn.RANK) <= 3)
+
+
+def get_show_label_expr() -> pl.Expr:
+    return pl.when(get_show_rank_condition()).then(1).otherwise(0).alias(ResultColumn.SHOW_LABEL)
+
+
+def get_rank_clipped_expr(
+    raw_column: str = ResultColumn.RANK,
+    max_rank: int = 6,
+) -> pl.Expr:
+    return (
+        pl.when(pl.col(raw_column) > max_rank)
+        .then(max_rank)
+        .otherwise(pl.col(raw_column))
+        .alias(f"{raw_column}_clipped")
+    )
 
 
 def _convert_distance_to_class(distance: int) -> str:
@@ -310,12 +338,81 @@ def _shift_horse_result_expr(raw_column: str, prefix: str = "horse_id_", n_shift
     )
 
 
+def _agg_horse_last_result_by_filed_type(base_df: pl.DataFrame, last_prefix: str) -> pl.DataFrame:
+    all_df: Optional[pl.DataFrame] = None
+    for field_type in FIELD_TYPES:
+        logger.info("horse last result by field type: %s", field_type)
+        field_type_df = base_df.filter(pl.col(ResultColumn.FIELD_TYPE) == field_type)
+        key_columns = (
+            ResultColumn.HORSE_ID,
+            ResultColumn.RACE_ID,
+        )
+        previous_feature_raw_columns = (
+            ResultColumn.WIN_LABEL,
+            ResultColumn.SHOW_LABEL,
+            ResultColumn.RANK_CLIPPED,
+        )
+        previous_feature_rename_dict = {
+            ResultColumn.WIN_LABEL: "win_rate",
+            ResultColumn.SHOW_LABEL: "show_rate",
+        }
+
+        field_type_df = field_type_df.select(
+            *key_columns,
+            ResultColumn.RACE_DATE,
+            *previous_feature_raw_columns,
+        )
+
+        # 過去Nレースの平均を取るための材料
+        field_type_df = field_type_df.with_columns(
+            _shift_horse_result_expr(raw_column=c, n_shift=n_shift)
+            for c in previous_feature_raw_columns
+            for n_shift in (1, 2, 3, 4, 5)
+        )
+
+        # mean
+        field_type_df = field_type_df.with_columns(
+            *(
+                pl.mean_horizontal([pl.col(f"{last_prefix}{i + 1}_{c}") for i in range(num_mean)]).alias(
+                    f"{ResultColumn.HORSE_ID}_last{num_mean}_{c}_avg"
+                )
+                for c in previous_feature_raw_columns
+                for num_mean in (3, 5)
+            )
+        )
+
+        field_type_df = field_type_df.select(
+            *key_columns,
+            *(
+                pl.col(f"{ResultColumn.HORSE_ID}_last1_{c}").alias(
+                    f"{ResultColumn.HORSE_ID}_last1_{c}_field_type_{field_type}"
+                )
+                for c in previous_feature_raw_columns
+            ),
+            *(
+                pl.col(f"{ResultColumn.HORSE_ID}_last{num_mean}_{c}_avg").alias(
+                    f"{ResultColumn.HORSE_ID}_last{num_mean}_{previous_feature_rename_dict.get(c, c)}_avg_field_type_{field_type}"
+                )
+                for c in previous_feature_raw_columns
+                for num_mean in (3, 5)
+            ),
+        )
+        if all_df is None:
+            all_df = field_type_df
+        else:
+            suffix = "_right"
+            all_df = all_df.join(field_type_df, on=key_columns, how="outer", suffix=suffix)
+            all_df = all_df.drop([f"{c}{suffix}" for c in key_columns], strict=False)
+    return all_df
+
+
 def preprocess_horse(df: pl.DataFrame, feature_columns: list[str]) -> pl.DataFrame:
     horse_base_df = df.select(
         [
             pl.col(ResultColumn.RANK).cast(pl.Int32),
             pl.col(ResultColumn.HORSE_ID).cast(pl.String),
             pl.col(ResultColumn.DISTANCE_CLASS),
+            pl.col(ResultColumn.FIELD_TYPE),
         ]
     )
 
@@ -330,7 +427,7 @@ def preprocess_horse(df: pl.DataFrame, feature_columns: list[str]) -> pl.DataFra
     #  - horse_id_win_count_distance_class_{distance_class}
     #  - horse_id_win_rate_distance_class_{distance_class}
     logger.info("Calculating horse win count and rate...")
-    win_rank_condition = pl.col(ResultColumn.RANK) == 1
+    win_rank_condition = get_win_rank_condition()
     win_stats = _calculate_horse_stats(
         base_df=horse_base_df,
         race_count_df=horse_race_count_df,
@@ -345,7 +442,7 @@ def preprocess_horse(df: pl.DataFrame, feature_columns: list[str]) -> pl.DataFra
     #  - horse_id_show_count_distance_class_{distance_class}
     #  - horse_id_show_rate_distance_class_{distance_class}
     logger.info("Calculating horse show count and rate...")
-    show_rank_condition = (pl.col(ResultColumn.RANK) >= 1) & (pl.col(ResultColumn.RANK) <= 3)
+    show_rank_condition = get_show_rank_condition()
     show_stats = _calculate_horse_stats(
         base_df=horse_base_df,
         race_count_df=horse_race_count_df,
@@ -357,7 +454,7 @@ def preprocess_horse(df: pl.DataFrame, feature_columns: list[str]) -> pl.DataFra
     # [previous]
     # - horse_id_last1_rank
     # - horse_id_last1_distance
-    # - horse_id_last1_corner_rank_{i}
+    # - horse_id_last1_corner_{i}_rank
     # - horse_id_last1_goal_time
     # - horse_id_last1_goal_speed
     # - horse_id_last1_last_3f_time
@@ -368,8 +465,8 @@ def preprocess_horse(df: pl.DataFrame, feature_columns: list[str]) -> pl.DataFra
         ResultColumn.LAST_3F_TIME,
     ]
     num_corners = 4
-    corner_rank_columns = [f"corner_rank_{i+1}" for i in range(num_corners)]
-    corner_rank_clipped_columns = [f"corner_rank_clipped_{i+1}" for i in range(num_corners)]
+    corner_rank_columns = [f"corner_{i+1}_rank" for i in range(num_corners)]
+    corner_rank_clipped_columns = [f"corner_{i+1}_rank_clipped" for i in range(num_corners)]
     last_race_exprs = [
         pl.col(ResultColumn.HORSE_ID),
         pl.col(ResultColumn.RACE_ID),
@@ -453,11 +550,18 @@ def preprocess_horse(df: pl.DataFrame, feature_columns: list[str]) -> pl.DataFra
 
     logger.info("previous result features calculated:\n%s", last_race_df)
 
+    # [previous.field_type]
+    field_type_df = _agg_horse_last_result_by_filed_type(
+        base_df=df,
+        last_prefix=last_prefix,
+    )
+
     # Combine all stats
     logger.info("Combining win, show and previous stats...")
     horse_race_df = df.select(ResultColumn.HORSE_ID, ResultColumn.RACE_ID).unique()
     return (
         horse_race_df.join(last_race_df, on=[ResultColumn.HORSE_ID, ResultColumn.RACE_ID], how="left")
+        .join(field_type_df, on=[ResultColumn.HORSE_ID, ResultColumn.RACE_ID], how="left")
         .join(win_stats, on=ResultColumn.HORSE_ID, how="left")
         .join(show_stats, on=ResultColumn.HORSE_ID, how="left")
     )
@@ -611,6 +715,11 @@ def preprocess(
         select_exprs.append(pl.col(ResultColumn.CORNER_RANK).cast(pl.String).alias(f"raw_{ResultColumn.CORNER_RANK}"))
 
         df = df.select(select_exprs)
+        df = df.with_columns(
+            get_win_label_expr(),
+            get_show_label_expr(),
+            get_rank_clipped_expr(),
+        )
 
         # goal time
         # 1:54.5 => 60 + 54.5 = 114.5 sec
@@ -638,24 +747,15 @@ def preprocess(
         # 6-4-3-1
         # => corner_rank_1 = 6, corner_rank_2 = 4, ... , corner_rank_4 = 1
         num_corners = 4
-        max_rank = 6
         df = df.with_columns(pl.col(f"raw_{ResultColumn.CORNER_RANK}").str.split("-").alias("corner_ranks"))
         df = df.with_columns(
             [
-                pl.col("corner_ranks").list.get(i, null_on_oob=True).cast(pl.Int32).alias(f"corner_rank_{i+1}")
+                pl.col("corner_ranks").list.get(i, null_on_oob=True).cast(pl.Int32).alias(f"corner_{i+1}_rank")
                 for i in range(num_corners)
             ]
         )
         # Clip large corner rank
-        df = df.with_columns(
-            [
-                pl.when(pl.col(f"corner_rank_{i+1}") > max_rank)
-                .then(max_rank)
-                .otherwise(pl.col(f"corner_rank_{i+1}"))
-                .alias(f"corner_rank_clipped_{i+1}")
-                for i in range(num_corners)
-            ]
-        )
+        df = df.with_columns([get_rank_clipped_expr(f"corner_{i+1}_rank") for i in range(num_corners)])
         df = df.drop("corner_ranks", pl.col(f"raw_{ResultColumn.CORNER_RANK}"))
     else:
         df = df.select(select_exprs)

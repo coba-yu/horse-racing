@@ -60,6 +60,9 @@ class ResultColumn:
     HORSE_NAME: str = "horse_name"
     JOCKEY_NAME: str = "jockey_name"
     TRAINER_NAME: str = "trainer_name"
+    RANK_CLIPPED: str = "rank_clipped"
+    WIN_LABEL: str = "win_label"
+    SHOW_LABEL: str = "show_label"
 
 
 GENDER_AGE_COLUMN = f"{ResultColumn.GENDER}_{ResultColumn.AGE}"
