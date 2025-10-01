@@ -334,7 +334,7 @@ def _shift_horse_result_expr(raw_column: str, prefix: str = "horse_id_", n_shift
 
 def _agg_horse_last_result(
     base_df: pl.DataFrame,
-    race_categories: Sequence[str],
+    race_categories: Sequence[int | str],
     race_category_column: str,
     last_prefix: str,
 ) -> dict[str, Any]:
@@ -417,13 +417,34 @@ def _agg_horse_last_result_by_distance_class(base_df: pl.DataFrame, last_prefix:
     )
 
 
-def _agg_horse_last_result_by_filed_type(base_df: pl.DataFrame, last_prefix: str) -> dict[str, Any]:
+def _agg_horse_last_result_by_field_type(base_df: pl.DataFrame, last_prefix: str) -> dict[str, Any]:
     return _agg_horse_last_result(
         base_df=base_df,
-        race_categories=[str(category) for category in FIELD_TYPES],
+        race_categories=FIELD_TYPES,
         race_category_column=ResultColumn.FIELD_TYPE,
         last_prefix=last_prefix,
     )
+
+
+def _extract_horse_last_result_same_field_type(
+    base_df: pl.DataFrame,
+    column_prefix: str,
+) -> pl.DataFrame:
+    alias_name = f"{column_prefix}field_type_same"
+    result_df = base_df.with_columns(
+        pl.when(pl.col(ResultColumn.FIELD_TYPE) == 0)
+        .then(pl.col(f"{column_prefix}field_type_0"))
+        .otherwise(None)
+        .alias(alias_name)
+    )
+    for field_type in FIELD_TYPES[1:]:
+        result_df = result_df.with_columns(
+            pl.when(pl.col(ResultColumn.FIELD_TYPE) == field_type)
+            .then(pl.col(f"{column_prefix}field_type_{field_type}"))
+            .otherwise(pl.col(alias_name))
+            .alias(alias_name)
+        )
+    return result_df
 
 
 def preprocess_horse(df: pl.DataFrame, feature_columns: list[str]) -> pl.DataFrame:
@@ -523,7 +544,7 @@ def preprocess_horse(df: pl.DataFrame, feature_columns: list[str]) -> pl.DataFra
     distance_class_previous_columns = distance_class_result["previous_feature_columns"]
 
     # [previous.field_type]
-    field_type_result = _agg_horse_last_result_by_filed_type(base_df=df, last_prefix=last_prefix)
+    field_type_result = _agg_horse_last_result_by_field_type(base_df=df, last_prefix=last_prefix)
     field_type_df = field_type_result["data"]
     field_type_previous_columns = field_type_result["previous_feature_columns"]
 
@@ -816,6 +837,19 @@ def preprocess(
             .alias(f"{ResultColumn.HORSE_ID}_days_since_last_race")
         )
     )
+
+    for column_prefix in (
+        f"{ResultColumn.HORSE_ID}_last1_win_label_",
+        f"{ResultColumn.HORSE_ID}_last1_show_label_",
+        f"{ResultColumn.HORSE_ID}_last1_rank_clipped_",
+        f"{ResultColumn.HORSE_ID}_last3_win_rate_avg_",
+        f"{ResultColumn.HORSE_ID}_last3_show_rate_avg_",
+        f"{ResultColumn.HORSE_ID}_last3_rank_clipped_avg_",
+        f"{ResultColumn.HORSE_ID}_last5_win_rate_avg_",
+        f"{ResultColumn.HORSE_ID}_last5_show_rate_avg_",
+        f"{ResultColumn.HORSE_ID}_last5_rank_clipped_avg_",
+    ):
+        df = _extract_horse_last_result_same_field_type(base_df=df, column_prefix=column_prefix)
 
     logger.info("After joining horse features, shape: %s", df.shape)
 
