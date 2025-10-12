@@ -1,13 +1,13 @@
 import json
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Literal, Any, Optional
 
 import polars as pl
 
+from horse_racing.core.datetime import get_current_yyyymmdd_hhmmss
 from horse_racing.core.gcp.storage import StorageClient
 from horse_racing.core.logging import logger
 from horse_racing.infrastructure.netkeiba.race_result import RaceResultNetkeibaRepository
@@ -51,7 +51,7 @@ class TrainConfig:
     train_first_date: str = ""
     train_last_date: str = ""
     valid_last_date: str = ""
-    data_version: str = datetime.now().strftime("%Y%m%d_%H%M%S")
+    data_version: str = get_current_yyyymmdd_hhmmss()
     _feature_columns: str = ",".join(
         [
             ResultColumn.HORSE_NUMBER,
@@ -77,7 +77,7 @@ class TrainConfig:
     )
 
     # constants
-    model_version: str = datetime.now().strftime("%Y%m%d_%H%M%S")
+    model_version: str = get_current_yyyymmdd_hhmmss()
 
     @property
     def feature_columns(self) -> list[str]:
