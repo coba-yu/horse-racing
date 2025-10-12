@@ -144,8 +144,11 @@ def extract_race_info(soup: BeautifulSoup) -> dict[str, Any]:
 
 
 def _remove_whitespace(df: pl.DataFrame, column: str) -> pl.DataFrame:
-    df = df.with_columns(pl.col(column).str.replace(r"^\s+", "").alias(column))
-    return df.with_columns(pl.col(column).str.replace(r"\s+$", "").alias(column))
+    return (
+        df.with_columns(pl.col(column).str.replace_all("　", " ").alias(column))
+        .with_columns(pl.col(column).str.replace(r"\s+", " ").alias(column))
+        .with_columns(pl.col(column).str.strip_chars().alias(column))
+    )
 
 
 def _extracted_id_df(tag: Tag, href_key: str, id_column_prefix: str, name_column: str) -> pl.DataFrame:
@@ -164,11 +167,13 @@ def _extracted_id_df(tag: Tag, href_key: str, id_column_prefix: str, name_column
             name = "".join((label, name))
         name_values.append(name)
 
+        # https://db.netkeiba.com/trainer/result/recent/01169/
         href = a.get("href")
         if href is None:
             id_values.append(None)
             continue
 
+        # https://db.netkeiba.com/trainer/result/recent/01169/ => "01169"
         ids = re.findall(rf"{href_key}/([\d\w]+)", href)
         if ids is None or len(ids) < 1:
             id_values.append(None)
