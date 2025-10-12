@@ -132,7 +132,7 @@ def get_inverse_rank_expr() -> pl.Expr:
 
 def get_inverse_rank_log2_expr() -> pl.Expr:
     return (
-        (pl.lit(1.0, dtype=pl.Float64) / pl.col(ResultColumn.RANK).log(base=2))
+        (pl.lit(1.0, dtype=pl.Float64) / (pl.col(ResultColumn.RANK) + pl.lit(1, dtype=pl.Int32)).log(base=2))
         .cast(pl.Float64)
         .alias(ResultColumn.INVERSE_RANK_LOG2)
     )
