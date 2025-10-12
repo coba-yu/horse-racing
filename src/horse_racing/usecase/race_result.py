@@ -63,6 +63,8 @@ class ResultColumn:
     RANK_CLIPPED: str = "rank_clipped"
     WIN_LABEL: str = "win_label"
     SHOW_LABEL: str = "show_label"
+    INVERSE_RANK: str = "inverse_rank"
+    INVERSE_RANK_LOG2: str = "inverse_rank_log2"
 
 
 GENDER_AGE_COLUMN = f"{ResultColumn.GENDER}_{ResultColumn.AGE}"

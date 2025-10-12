@@ -126,6 +126,18 @@ def get_show_label_expr() -> pl.Expr:
     return pl.when(get_show_rank_condition()).then(1).otherwise(0).alias(ResultColumn.SHOW_LABEL)
 
 
+def get_inverse_rank_expr() -> pl.Expr:
+    return (pl.lit(1.0, dtype=pl.Float64) / pl.col(ResultColumn.RANK)).cast(pl.Float64).alias(ResultColumn.INVERSE_RANK)
+
+
+def get_inverse_rank_log2_expr() -> pl.Expr:
+    return (
+        (pl.lit(1.0, dtype=pl.Float64) / pl.col(ResultColumn.RANK).log(base=2))
+        .cast(pl.Float64)
+        .alias(ResultColumn.INVERSE_RANK_LOG2)
+    )
+
+
 def get_rank_clipped_expr(
     raw_column: str = ResultColumn.RANK,
     max_rank: int = 6,
@@ -711,7 +723,7 @@ def preprocess(
     if mode == "train":
         # target label
         df = df.filter(~pl.col(ResultColumn.RANK).is_in({"中止", "除外", "取消"}))
-        select_exprs.append(pl.col(ResultColumn.RANK).cast(pl.Int32))
+        select_exprs.append(pl.col(ResultColumn.RANK).cast(pl.Int32).alias(ResultColumn.RANK))
         select_exprs.append(pl.col(ResultColumn.GOAL_TIME).cast(pl.String).alias(ResultColumn.GOAL_TIME))
         select_exprs.append(pl.col(ResultColumn.LAST_3F_TIME).cast(pl.Float64).alias(ResultColumn.LAST_3F_TIME))
         select_exprs.append(pl.col(ResultColumn.CORNER_RANK).cast(pl.String).alias(f"raw_{ResultColumn.CORNER_RANK}"))
@@ -721,6 +733,8 @@ def preprocess(
             get_win_label_expr(),
             get_show_label_expr(),
             get_rank_clipped_expr(),
+            get_inverse_rank_expr(),  # target for ranker
+            get_inverse_rank_log2_expr(),  # target for ranker
         )
 
         # [goal speed]
