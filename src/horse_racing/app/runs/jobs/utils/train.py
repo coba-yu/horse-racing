@@ -7,6 +7,7 @@ from typing import Literal, Any, Optional
 
 import polars as pl
 
+from horse_racing.app.runs.jobs.utils.preprocess import select_base_columns
 from horse_racing.core.datetime import get_current_yyyymmdd_hhmmss
 from horse_racing.core.gcp.storage import StorageClient
 from horse_racing.core.logging import logger
@@ -14,8 +15,6 @@ from horse_racing.infrastructure.netkeiba.race_result import RaceResultNetkeibaR
 from horse_racing.usecase.race_result import (
     RaceResultUsecase,
     ResultColumn,
-    GENDER_AGE_COLUMN,
-    HORSE_WEIGHT_AND_DIFF_COLUMN,
 )
 
 FIELD_TYPES = (
@@ -681,57 +680,29 @@ def preprocess(
     jockey_df: pl.DataFrame | None = None,
     mode: Literal["train", "predict"] = "train",
 ) -> dict[str, pl.DataFrame]:
-    # filter race
+    """Preprocess data.
+
+    1. Filter race
+    2. Select base columns for preprocess
+    3. Prepare label
+    4. Calcurate goal speed
+    5. Process corner rank
+    6. Process categorical features
+    7. Prepare horse features
+    """
+
+    # 1. Filter race
     if mode == "train":
         df = _remove_debut_race(raw_df)
     else:
         df = raw_df
     df = df.drop("race_name")
 
-    select_exprs = [
-        pl.col(ResultColumn.HORSE_NUMBER).cast(pl.Int32),
-        pl.col(ResultColumn.FRAME).cast(pl.Int32),
-        pl.col(GENDER_AGE_COLUMN).alias(ResultColumn.GENDER),  # 後ほどextractされる
-        pl.col(GENDER_AGE_COLUMN).str.extract(r"(\d+)").cast(pl.Int32).alias(ResultColumn.AGE),
-        pl.col(ResultColumn.TOTAL_WEIGHT).cast(pl.Float64).alias(ResultColumn.TOTAL_WEIGHT),
-        # race
-        pl.col(ResultColumn.RACE_NUMBER).str.extract(r"(\d+)").cast(pl.Int32).alias(ResultColumn.RACE_NUMBER),
-        pl.col(ResultColumn.RACE_PLACE).cast(pl.String),
-        pl.col(ResultColumn.RACE_CLASS).cast(pl.String),
-        pl.col(ResultColumn.START_AT).str.extract(r"^(\d+)").cast(pl.Int32).alias(ResultColumn.START_AT),
-        pl.col(ResultColumn.DISTANCE).str.extract(r"(\d+)").cast(pl.Int32).alias(ResultColumn.DISTANCE),
-        pl.col(ResultColumn.DISTANCE).alias(ResultColumn.ROTATE),
-        pl.col(ResultColumn.DISTANCE).alias(ResultColumn.FIELD_TYPE),
-        pl.col(ResultColumn.WEATHER),
-        pl.col(ResultColumn.FIELD_CONDITION),
-        # fresh
-        pl.col(ResultColumn.POPULAR).cast(pl.Int32).alias(ResultColumn.POPULAR),
-        pl.col(ResultColumn.ODDS).cast(pl.Float32).alias(ResultColumn.ODDS),  # TODO: use predicted odds
-        # not feature
-        pl.col(ResultColumn.RACE_ID),
-        pl.col(ResultColumn.RACE_DATE),
-        pl.col(ResultColumn.HORSE_NAME),
-        pl.col(ResultColumn.HORSE_ID),
-        pl.col(ResultColumn.JOCKEY_ID),
-        pl.col(ResultColumn.TRAINER_ID),
-    ]
-    if ResultColumn.HORSE_WEIGHT_DIFF_DEV in feature_columns:
-        select_exprs.append(
-            pl.col(HORSE_WEIGHT_AND_DIFF_COLUMN)
-            .str.extract(r"\(([-\+\d]+)\)")
-            .cast(pl.Int32)
-            .alias(ResultColumn.HORSE_WEIGHT_DIFF)
-        )
+    # 2. Select base columns for preprocess
+    df = select_base_columns(original_df=df, feature_columns=feature_columns, mode=mode)
 
     if mode == "train":
-        # target label
-        df = df.filter(~pl.col(ResultColumn.RANK).is_in({"中止", "除外", "取消"}))
-        select_exprs.append(pl.col(ResultColumn.RANK).cast(pl.Int32).alias(ResultColumn.RANK))
-        select_exprs.append(pl.col(ResultColumn.GOAL_TIME).cast(pl.String).alias(ResultColumn.GOAL_TIME))
-        select_exprs.append(pl.col(ResultColumn.LAST_3F_TIME).cast(pl.Float64).alias(ResultColumn.LAST_3F_TIME))
-        select_exprs.append(pl.col(ResultColumn.CORNER_RANK).cast(pl.String).alias(f"raw_{ResultColumn.CORNER_RANK}"))
-
-        df = df.select(select_exprs)
+        # 3. Prepare label
         df = df.with_columns(
             get_win_label_expr(),
             get_show_label_expr(),
@@ -740,10 +711,10 @@ def preprocess(
             get_inverse_rank_log2_expr(),  # target for ranker
         )
 
-        # [goal speed]
+        # 4. Calcurate goal speed
         df = calcurate_goal_speed(df)
 
-        # [corner rank]
+        # 5. Process corner rank
         # 6-4-3-1
         # => corner_rank_1 = 6, corner_rank_2 = 4, ... , corner_rank_4 = 1
         num_corners = 4
@@ -757,28 +728,10 @@ def preprocess(
         # Clip large corner rank
         df = df.with_columns([get_rank_clipped_expr(f"corner_{i+1}_rank") for i in range(num_corners)])
         df = df.drop("corner_ranks", pl.col(f"raw_{ResultColumn.CORNER_RANK}"))
-    else:
-        df = df.select(select_exprs)
+
     logger.info("After selecting basic features, shape: %s", df.shape)
 
-    # label encoding
-    gender_label_dict = {"牝": 0, "牡": 1, "セ": 2}
-    df = _label_encode(df=df, column=ResultColumn.GENDER, label_dict=gender_label_dict)
-
-    df = _label_encode(df=df, column=ResultColumn.ROTATE, label_dict={"左": 0, "右": 1})
-    df = _label_encode(df=df, column=ResultColumn.FIELD_TYPE, label_dict={"芝": 0, "ダ": 1, "障": 2})
-    df = _label_encode(
-        df=df,
-        column=ResultColumn.WEATHER,
-        label_dict={"晴": 0, "曇": 1, "小雨": 2, "雨": 3, "小雪": 4, "雪": 5},
-    )
-    df = _label_encode(
-        df=df,
-        column=ResultColumn.FIELD_CONDITION,
-        label_dict={"良": 0, "稍": 1, "重": 2, "不": 3, "未": 4},
-    )
-
-    # category type
+    # 6. Process categorical features
     df = df.with_columns(
         [
             pl.col(c).cast(pl.Categorical).alias(f"{c}_cat")
@@ -793,19 +746,7 @@ def preprocess(
     )
     logger.info("After preprocessing category type, shape: %s", df.shape)
 
-    # jockey target encoding
-    df = df.with_columns(
-        pl.col(ResultColumn.DISTANCE).map_elements(_convert_distance_to_class).alias(ResultColumn.DISTANCE_CLASS)
-    )
-    if jockey_df is None:
-        if mode == "train":
-            logger.info("Preprocessing jockey features...")
-            jockey_df = _agg_jockey(df)
-        else:
-            raise ValueError("mode is not train, but jockey_df is not provided")
-    df = df.join(jockey_df, on=ResultColumn.JOCKEY_ID, how="left")
-    logger.info("After joining jockey features, shape: %s", df.shape)
-
+    # 7. Prepare horse features
     if horse_df is None:
         if mode == "train":
             # [win]
