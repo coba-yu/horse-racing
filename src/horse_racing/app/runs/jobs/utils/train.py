@@ -682,7 +682,10 @@ def preprocess(
     mode: Literal["train", "predict"] = "train",
 ) -> dict[str, pl.DataFrame]:
     # filter race
-    df = _remove_debut_race(raw_df)
+    if mode == "train":
+        df = _remove_debut_race(raw_df)
+    else:
+        df = raw_df
     df = df.drop("race_name")
 
     select_exprs = [
