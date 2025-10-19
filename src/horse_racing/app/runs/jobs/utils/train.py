@@ -6,7 +6,9 @@ from typing import Literal, Any
 
 import polars as pl
 
+from horse_racing.app.runs.jobs.utils.enum import Mode
 from horse_racing.app.runs.jobs.utils.preprocess import NUM_CORNERS, select_base_columns
+from horse_racing.app.runs.jobs.utils.preprocess.common import BASE_KEY_COLUMNS, calcurate_base_indeices
 from horse_racing.core.datetime import get_current_yyyymmdd_hhmmss
 from horse_racing.core.gcp.storage import StorageClient
 from horse_racing.core.logging import logger
@@ -86,6 +88,20 @@ class Target:
     RANK_WIN: str = "rank_win"
     RANK_SHOW: str = "rank_show"
     ODDS: str = "odds"
+
+
+@dataclass
+class PreprocessedData:
+    base_index: pl.DataFrame | None = None
+    horse: pl.DataFrame | None = None
+    jockey: pl.DataFrame | None = None
+
+    def to_dict(self) -> dict[str, pl.DataFrame | None]:
+        return {
+            "base_index": self.base_index,
+            "horse": self.horse,
+            "jockey": self.jockey,
+        }
 
 
 def collect_data(
@@ -284,8 +300,7 @@ def preprocess_horse(
 def preprocess(
     raw_df: pl.DataFrame,
     feature_columns: list[str],
-    horse_df: pl.DataFrame | None = None,
-    jockey_df: pl.DataFrame | None = None,
+    preprocessed_data: PreprocessedData | None = None,
     mode: Literal["train", "predict"] = "train",
 ) -> dict[str, pl.DataFrame]:
     """Preprocess data.
@@ -298,6 +313,9 @@ def preprocess(
     6. Process categorical features
     7. Prepare horse features
     """
+
+    if preprocessed_data is None:
+        preprocessed_data = PreprocessedData()
 
     # 1. Filter race
     if mode == "train":
@@ -353,9 +371,20 @@ def preprocess(
         label_dict={"良": 0, "稍": 1, "重": 2, "不": 3, "未": 4},
     )
 
-    # 5. Prepare horse features
-    if horse_df is None:
-        if mode == "train":
+    # 5. Prepare base index
+    if preprocessed_data.base_index is None:
+        if mode == Mode.TRAIN:
+            logger.info("Preprocessing race class features...")
+            base_index_df = calcurate_base_indeices(df=df)
+        else:
+            raise ValueError("mode is not train, but base_index_df is not provided")
+    else:
+        base_index_df = preprocessed_data.base_index
+    df = df.join(base_index_df, on=BASE_KEY_COLUMNS, how="left")
+
+    # 6. Prepare horse features
+    if preprocessed_data.horse is None:
+        if mode == Mode.TRAIN:
             # [win]
             # - horse_id_win_count
             # - horse_id_win_rate
@@ -385,10 +414,9 @@ def preprocess(
                 for c in previous_feature_columns
             )
         else:
-            # TODO
-            # raise ValueError("mode is not train, but horse_df is not provided")
-            pass
+            raise ValueError("mode is not train, but horse_df is not provided")
     else:
+        horse_df = preprocessed_data.horse
         df = df.join(horse_df, on=ResultColumn.HORSE_ID, how="left")
 
     # Days since last race feature
@@ -420,13 +448,13 @@ def preprocess(
 
     if horse_df is not None:
         horse_df = horse_df.unique(subset=[ResultColumn.HORSE_ID])
-    if jockey_df is not None:
-        jockey_df = jockey_df.unique(subset=[ResultColumn.JOCKEY_ID])
 
     return {
         "feature": df,
-        "horse": horse_df,
-        "jockey": jockey_df,
+        "data": PreprocessedData(
+            base_index=base_index_df,
+            horse=horse_df,
+        ),
     }
 
 
