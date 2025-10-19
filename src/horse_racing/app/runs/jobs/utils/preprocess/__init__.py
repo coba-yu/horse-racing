@@ -90,7 +90,16 @@ def select_base_columns(
 
     # Corner rank
     select_exprs.append(pl.col(ResultColumn.CORNER_RANK).cast(pl.String).alias(f"raw_{ResultColumn.CORNER_RANK}"))
+
+    # Select
     df = df.select(select_exprs)
+    df = df.unique(subset=[ResultColumn.RACE_ID, ResultColumn.HORSE_NUMBER], maintain_order=True)
+
+    # Number of horses
+    num_horse_df = df.group_by(ResultColumn.RACE_ID).agg(
+        pl.max(ResultColumn.HORSE_NUMBER).alias(ResultColumn.NUM_HORSES)
+    )
+    df = df.join(num_horse_df, on=ResultColumn.RACE_ID, how="left")
 
     # Calcurate goal time [sec]
     df = calcurate_goal_speed(df)
@@ -104,6 +113,18 @@ def select_base_columns(
             pl.col("corner_ranks").list.get(i, null_on_oob=True).cast(pl.Int32).alias(f"corner_{i+1}_rank")
             for i in range(num_corners)
         ]
+    )
+    df = df.drop(f"raw_{ResultColumn.CORNER_RANK}", "corner_ranks")
+
+    df = df.with_columns(
+        pl.mean_horizontal([f"corner_{i+1}_rank" for i in range(num_corners)], ignore_nulls=True).alias(
+            f"{ResultColumn.CORNER_RANK}_avg"
+        )
+    )
+    df = df.with_columns(
+        (pl.col(f"{ResultColumn.CORNER_RANK}_avg") / pl.col(ResultColumn.NUM_HORSES)).alias(
+            f"{ResultColumn.CORNER_RANK}_relative_avg"
+        )
     )
 
     return df

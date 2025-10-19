@@ -6,7 +6,7 @@ from typing import Literal, Any
 
 import polars as pl
 
-from horse_racing.app.runs.jobs.utils.preprocess import select_base_columns
+from horse_racing.app.runs.jobs.utils.preprocess import NUM_CORNERS, select_base_columns
 from horse_racing.core.datetime import get_current_yyyymmdd_hhmmss
 from horse_racing.core.gcp.storage import StorageClient
 from horse_racing.core.logging import logger
@@ -169,7 +169,11 @@ def _shift_horse_result_expr(raw_column: str, prefix: str = "horse_id_", n_shift
     )
 
 
-def preprocess_horse(df: pl.DataFrame, feature_columns: list[str]) -> pl.DataFrame:
+def preprocess_horse(
+    df: pl.DataFrame,
+    feature_columns: list[str],
+    num_corners: int = NUM_CORNERS,
+) -> pl.DataFrame:
     # [previous]
     # - horse_id_last1_rank
     # - horse_id_last1_distance
@@ -177,14 +181,15 @@ def preprocess_horse(df: pl.DataFrame, feature_columns: list[str]) -> pl.DataFra
     # - horse_id_last1_goal_time
     # - horse_id_last1_goal_speed
     # - horse_id_last1_last_3f_time
+    # - horse_id_last1_corner_rank_relative_avg
     logger.info("Calculating previous result...")
     previous_mean_feature_columns = [
         ResultColumn.GOAL_TIME,
         ResultColumn.GOAL_SPEED,
         ResultColumn.LAST_3F_TIME,
+        f"{ResultColumn.CORNER_RANK}_relative_avg",
     ]
     num_mean_races = 3
-    num_corners = 4
     corner_rank_columns = [f"corner_{i+1}_rank" for i in range(num_corners)]
     mean_columns = [
         *previous_mean_feature_columns,
@@ -316,7 +321,7 @@ def preprocess(
 
     logger.info("After selecting basic features, shape: %s", df.shape)
 
-    # 6. Process categorical features
+    # 4. Process categorical features
     df = df.with_columns(
         [
             pl.col(c).cast(pl.Categorical).alias(f"{c}_cat")
@@ -348,7 +353,7 @@ def preprocess(
         label_dict={"良": 0, "稍": 1, "重": 2, "不": 3, "未": 4},
     )
 
-    # 7. Prepare horse features
+    # 5. Prepare horse features
     if horse_df is None:
         if mode == "train":
             # [win]
