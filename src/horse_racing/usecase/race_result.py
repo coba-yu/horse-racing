@@ -37,6 +37,8 @@ class ResultColumn:
     RACE_NUMBER: str = "race_number"
     RACE_NAME: str = "race_name"
     RACE_PLACE: str = "race_place"
+    RACE_CLASS_AGE: str = "race_class_age"
+    RACE_CLASS_WIN: str = "race_class_win"
     RACE_CLASS: str = "race_class"
     START_AT: str = "start_at"
     DISTANCE: str = "distance"
@@ -138,9 +140,11 @@ def extract_race_info(soup: BeautifulSoup) -> dict[str, Any]:
         race_data_2_0_texts = race_data_2_lines[0].split("\n")
 
         # => ["2回", "京都", "9日目", "サラ系３歳", "未勝利"]
-        _, race_place, _, _, race_class = race_data_2_0_texts[:5]
+        _, race_place, _, race_class_age, race_class_win = race_data_2_0_texts[:5]
         race_info[ResultColumn.RACE_PLACE] = race_place
-        race_info[ResultColumn.RACE_CLASS] = race_class
+        race_info[ResultColumn.RACE_CLASS_AGE] = race_class_age
+        race_info[ResultColumn.RACE_CLASS_WIN] = race_class_win
+        race_info[ResultColumn.RACE_CLASS] = "_".join((race_class_age, race_class_win))
 
     return dict(**race_info)
 
