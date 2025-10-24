@@ -20,9 +20,15 @@ class HorseNetkeibaRepository(BaseNetkeibaRepository):
             sub_dir_name="horse",
         )
 
-    def get_by_id(self, horse_id: str, force_netkeiba: bool = False) -> str:
+    def get_by_id(
+        self,
+        horse_id: str,
+        race_date: str | None = None,
+        force_netkeiba: bool = False,
+    ) -> str:
         return self._get_by_id(
             partition=[("horse_id", horse_id)],
             url_params={"horse_id": horse_id},
+            file_stem=race_date,
             force_netkeiba=force_netkeiba,
         )
