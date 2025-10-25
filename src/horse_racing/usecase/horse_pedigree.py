@@ -84,7 +84,7 @@ class HorsePedigreeUsecase:
             if url is None:
                 logger.info("Skip because no href: horse_id = %s", horse_id)
                 continue
-            ancestor_horse_id_match = re.search(r"horse/([a-zA-Z0-9]+)/", url)
+            ancestor_horse_id_match = re.search(r"horse/([a-zA-Z0-9]+)", url)
             if ancestor_horse_id_match is None:
                 logger.info("Skip because no ancestor horse id: horse_id = %s", horse_id)
                 continue
