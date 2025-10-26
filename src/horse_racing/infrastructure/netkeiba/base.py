@@ -91,15 +91,15 @@ class BaseNetkeibaRepository:
         if self.driver is None:
             raise ValueError("missing driver")
 
-        cache_path = self.get_cache_path(partition=partition, file_stem=file_stem)
-
         if url_params is None:
             url_params = {}
         url = self.url_template.format(**url_params)
 
-        logger.info(f"Downloading {url} to {cache_path}")
+        logger.info("Downloading %s", url)
         html = str(self.driver.get_page_source(url=url))
 
+        logger.info("Saving to local cache (file_stem = %s)", file_stem)
+        cache_path = self.get_cache_path(partition=partition, file_stem=file_stem)
         cache_path.parent.mkdir(parents=True, exist_ok=True)
         with open(cache_path, "w") as f:
             f.write(html)
