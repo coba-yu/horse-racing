@@ -8,7 +8,10 @@ import polars as pl
 
 from horse_racing.app.runs.jobs.utils.enum import Mode
 from horse_racing.app.runs.jobs.utils.preprocess import NUM_CORNERS, select_base_columns
-from horse_racing.app.runs.jobs.utils.preprocess.common import BASE_KEY_COLUMNS, calcurate_base_indeices
+from horse_racing.app.runs.jobs.utils.preprocess.horse_speed_index import (
+    calculate_speed_index,
+    calcurate_base_index,
+)
 from horse_racing.core.datetime import get_current_yyyymmdd_hhmmss
 from horse_racing.core.gcp.storage import StorageClient
 from horse_racing.core.logging import logger
@@ -371,18 +374,7 @@ def preprocess(
         label_dict={"良": 0, "稍": 1, "重": 2, "不": 3, "未": 4},
     )
 
-    # 5. Prepare base index
-    if preprocessed_data.base_index is None:
-        if mode == Mode.TRAIN:
-            logger.info("Preprocessing race class features...")
-            base_index_df = calcurate_base_indeices(df=df)
-        else:
-            raise ValueError("mode is not train, but base_index_df is not provided")
-    else:
-        base_index_df = preprocessed_data.base_index
-    df = df.join(base_index_df, on=BASE_KEY_COLUMNS, how="left")
-
-    # 6. Prepare horse features
+    # 5. Prepare horse features
     if preprocessed_data.horse is None:
         if mode == Mode.TRAIN:
             # [win]
@@ -418,6 +410,17 @@ def preprocess(
     else:
         horse_df = preprocessed_data.horse
         df = df.join(horse_df, on=ResultColumn.HORSE_ID, how="left")
+
+    # 6. Prepare base index
+    if preprocessed_data.base_index is None:
+        if mode == Mode.TRAIN:
+            logger.info("Preprocessing race class features...")
+            base_index_df = calcurate_base_index(df=df)
+        else:
+            raise ValueError("mode is not train, but base_index_df is not provided")
+    else:
+        base_index_df = preprocessed_data.base_index
+    df = calculate_speed_index(df, base_df=base_index_df)
 
     # Days since last race feature
     df = df.with_columns(
