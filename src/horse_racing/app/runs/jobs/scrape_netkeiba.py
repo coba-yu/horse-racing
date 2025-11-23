@@ -59,7 +59,7 @@ def scrape_by_race_date(
             result_df = convert_html_to_dataframe(html=html, race_date=race_date, race_id=race_id)
             for row in result_df.to_dicts():
                 horse_id = row[ResultColumn.HORSE_ID]
-                horse_pedigree_usecase.get_raw_html(horse_id=horse_id, date=exec_date)
+                horse_pedigree_usecase.get_raw_html(horse_id=horse_id)
 
 
 def main() -> None:

@@ -23,12 +23,10 @@ class HorsePedigreeNetkeibaRepository(BaseNetkeibaRepository):
     def get_by_id(
         self,
         horse_id: str,
-        date: str | None = None,
         force_netkeiba: bool = False,
     ) -> str:
         return self._get_by_id(
-            partition=[("horse_id", horse_id)],
             url_params={"horse_id": horse_id},
-            file_stem=date,
+            file_stem=horse_id,
             force_netkeiba=force_netkeiba,
         )

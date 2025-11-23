@@ -39,32 +39,27 @@ class HorsePedigreeUsecase:
     def get_raw_html(
         self,
         horse_id: str,
-        date: str | None = None,
         force_netkeiba: bool = False,
     ) -> str:
         return self._horse_pedigree_repository.get_by_id(
             horse_id=horse_id,
-            date=date,
             force_netkeiba=force_netkeiba,
         )
 
     def _get_soup(
         self,
         horse_id: str,
-        date: str | None = None,
         force_netkeiba: bool = False,
     ) -> BeautifulSoup:
-        html = self.get_raw_html(horse_id=horse_id, date=date, force_netkeiba=force_netkeiba)
+        html = self.get_raw_html(horse_id=horse_id, force_netkeiba=force_netkeiba)
         return get_soup(html)
 
     def get(
         self,
         horse_id: str,
-        date: str | None = None,
         force_netkeiba: bool = False,
     ) -> dict[str, str] | None:
-        soup = self._get_soup(horse_id=horse_id, date=date, force_netkeiba=force_netkeiba)
-
+        soup = self._get_soup(horse_id=horse_id, force_netkeiba=force_netkeiba)
         # Find pedigree table
         table: Tag = soup.find("table", class_="blood_table detail")
         if table is None:
